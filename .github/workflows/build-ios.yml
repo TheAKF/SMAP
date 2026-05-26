@@ -29,18 +29,51 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
-      - name: Debug Podfile (verify plugin ran)
-        run: |
-          echo "=== First 40 lines of Podfile ==="
-          head -40 ios/Podfile
-          echo "=== GoogleUtilities in Podfile ==="
-          grep -n "GoogleUtilities\|modular_headers\|use_modular" ios/Podfile || echo "NOT FOUND"
-
       - name: Copy GoogleService-Info.plist into iOS project
         run: |
           PROJ_DIR=$(find ios -name "*.xcodeproj" -maxdepth 2 | head -1 | xargs dirname)
           cp /tmp/GoogleService-Info.plist "$PROJ_DIR/GoogleService-Info.plist"
           echo "Copied to: $PROJ_DIR"
+
+      - name: Patch Podfile — fix Firebase modular headers
+        run: |
+          python3 - <<'PYEOF'
+          import re, sys
+
+          with open('ios/Podfile', 'r') as f:
+              content = f.read()
+
+          print("--- Podfile snippet before patch ---")
+          for i, line in enumerate(content.splitlines()[:35], 1):
+              print(f"{i}: {line}")
+
+          patch = "  pod 'GoogleUtilities', :modular_headers => true\n" \
+                  "  pod 'FirebaseCoreInternal', :modular_headers => true\n"
+
+          if "pod 'GoogleUtilities', :modular_headers" in content:
+              print("\n✅ Already patched")
+          else:
+              # Insert right after the first `target '...' do` line
+              patched = re.sub(
+                  r"(target '[^']+' do\n)",
+                  r"\g<1>" + patch,
+                  content,
+                  count=1
+              )
+              if patched == content:
+                  print("\n❌ target block not found — prepending use_modular_headers!")
+                  patched = "use_modular_headers!\n" + content
+              with open('ios/Podfile', 'w') as f:
+                  f.write(patched)
+              print("\n✅ Patched!")
+
+          # Verify
+          with open('ios/Podfile', 'r') as f:
+              result = f.read()
+          matches = [l for l in result.splitlines() if 'GoogleUtilities' in l or 'modular_headers' in l]
+          print("\n--- Verification ---")
+          print('\n'.join(matches) if matches else "❌ NOTHING FOUND")
+          PYEOF
 
       - name: Cache CocoaPods
         uses: actions/cache@v4
