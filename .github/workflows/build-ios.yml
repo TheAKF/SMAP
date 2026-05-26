@@ -43,12 +43,23 @@ jobs:
           with open('ios/Podfile', 'r') as f:
               content = f.read()
 
-          print('=== Podfile BEFORE patch (first 30 lines) ===')
+          # ── Diagnostic ──────────────────────────────────────────────────────
+          print('=== Podfile first 30 lines ===')
           for i, line in enumerate(content.splitlines()[:30], 1):
               print(f'{i:3}: {line}')
           print()
 
-          # ── Fix 1: use_modular_headers! globally ──────────────────────────────
+          idx = content.find('use_expo_modules!')
+          if idx >= 0:
+              end_idx = content.find('\n', idx)
+              print(f'use_expo_modules! found at char {idx}')
+              print(f'  exact line : {repr(content[idx:end_idx])}')
+              print(f'  with prefix: {repr(content[max(0,idx-10):end_idx])}')
+          else:
+              print('WARNING: use_expo_modules! NOT FOUND in Podfile!')
+          print()
+
+          # ── Fix 1: use_modular_headers! globally ────────────────────────────
           if 'use_modular_headers!' not in content:
               m = re.search(r'^platform :ios', content, re.MULTILINE)
               if m:
@@ -60,55 +71,59 @@ jobs:
           else:
               print('= Fix 1: use_modular_headers! already present')
 
-          # ── Fix 2: exclude EXFirebaseCore from use_expo_modules! ─────────────
-          # EXFirebaseCore pulls in FirebaseCoreInternal (Swift) → GoogleUtilities (ObjC)
-          # which is exactly what causes the "does not define modules" error.
+          # ── Fix 2: exclude EXFirebaseCore using direct string position ───────
+          # EXFirebaseCore pulls in FirebaseCoreInternal → GoogleUtilities (the broken chain)
           if 'EXFirebaseCore' not in content:
-              new_content = re.sub(
-                  r'([ \t]*use_expo_modules!)(\s*\n)',
-                  r'\1(exclude: ["EXFirebaseCore"])\2',
-                  content, count=1
-              )
-              if 'EXFirebaseCore' in new_content:
-                  content = new_content
-                  print('+ Fix 2: excluded EXFirebaseCore from use_expo_modules!')
+              idx = content.find('use_expo_modules!')
+              if idx >= 0:
+                  eol = content.find('\n', idx)
+                  original_line = content[idx:eol]
+                  suffix = original_line[len('use_expo_modules!'):]
+                  # Accept empty, whitespace-only, or empty-parens suffix
+                  if not suffix.strip() or suffix.strip() == '()':
+                      new_line = 'use_expo_modules!(exclude: ["EXFirebaseCore"])'
+                      content = content[:idx] + new_line + content[eol:]
+                      print(f'+ Fix 2: patched use_expo_modules! → excluded EXFirebaseCore')
+                  else:
+                      print(f'! Fix 2: unexpected suffix {repr(suffix)} — skipping (Fix 3 will handle it)')
               else:
-                  print('! Fix 2: FAILED to find use_expo_modules! — dumping matching lines:')
-                  for line in content.splitlines():
-                      if 'expo_modules' in line or 'use_expo' in line:
-                          print(f'  {repr(line)}')
+                  print('! Fix 2: use_expo_modules! not found')
           else:
               print('= Fix 2: EXFirebaseCore already excluded')
 
-          # ── Fix 3: belt-and-suspenders — explicit pod overrides ──────────────
-          # Forces GoogleUtilities to define modules even if it somehow slips through.
+          # ── Fix 3: explicit pod overrides (inserted right after use_expo_modules!) ──
+          POD_PATCH = (
+              "  pod 'GoogleUtilities', :modular_headers => true\n"
+              "  pod 'FirebaseCoreInternal', :modular_headers => true\n"
+          )
           if "pod 'GoogleUtilities'" not in content:
-              new_content = re.sub(
-                  r'([ \t]*use_expo_modules!(?:\([^)]*\))?\s*\n)',
-                  lambda m: m.group(0)
-                      + "  pod 'GoogleUtilities', :modular_headers => true\n"
-                      + "  pod 'FirebaseCoreInternal', :modular_headers => true\n",
-                  content, count=1
-              )
-              if "pod 'GoogleUtilities'" in new_content:
-                  content = new_content
-                  print('+ Fix 3: added GoogleUtilities/FirebaseCoreInternal pod overrides')
+              idx = content.find('use_expo_modules!')
+              if idx >= 0:
+                  eol = content.find('\n', idx) + 1   # position right after the newline
+                  content = content[:eol] + POD_PATCH + content[eol:]
+                  print('+ Fix 3: inserted GoogleUtilities/FirebaseCoreInternal pod overrides')
               else:
-                  print('! Fix 3: could not add pod overrides — use_expo_modules! not found')
+                  # Fallback: insert inside first target block
+                  content = re.sub(
+                      r"(target '[^']+' do\n)",
+                      r'\1' + POD_PATCH,
+                      content, count=1
+                  )
+                  print('+ Fix 3: inserted pod overrides inside target block (fallback)')
           else:
-              print('= Fix 3: GoogleUtilities pod override already present')
+              print('= Fix 3: pod overrides already present')
 
           with open('ios/Podfile', 'w') as f:
               f.write(content)
 
           print()
-          print('=== Key lines in patched Podfile ===')
+          print('=== Key lines after patch ===')
           for i, line in enumerate(content.splitlines(), 1):
-              if any(k in line for k in ['modular_headers', 'EXFirebaseCore', 'GoogleUtilities', 'use_expo_modules', 'platform :ios']):
+              if any(k in line for k in ['modular_headers', 'EXFirebaseCore', 'GoogleUtilities',
+                                          'use_expo_modules', 'platform :ios']):
                   print(f'{i:3}: {line}')
-
           print()
-          print('=== Podfile AFTER patch (first 50 lines) ===')
+          print('=== Podfile first 50 lines ===')
           for i, line in enumerate(content.splitlines()[:50], 1):
               print(f'{i:3}: {line}')
           PYEOF
