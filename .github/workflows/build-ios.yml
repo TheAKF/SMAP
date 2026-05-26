@@ -144,11 +144,34 @@ jobs:
         id: xcode
         run: |
           WORKSPACE=$(find ios -name "*.xcworkspace" -maxdepth 1 | head -1)
+          echo "Workspace: $WORKSPACE"
+
+          # List all available schemes for debugging
+          echo "Available schemes:"
+          xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null | grep -A 999 "Schemes:" || true
+
+          # Prefer the app scheme (SchoolMap) over pod schemes like EXAV, RNScreens, etc.
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
-            | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" | head -1 | xargs)
+            | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" \
+            | xargs -I{} echo "{}" \
+            | grep -i "^SchoolMap$" | head -1)
+
+          # Fallback: any scheme with "School" in the name
+          if [ -z "$SCHEME" ]; then
+            SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
+              | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" \
+              | grep -i "School" | head -1 | xargs)
+          fi
+
+          # Last resort: first scheme
+          if [ -z "$SCHEME" ]; then
+            SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
+              | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" | head -1 | xargs)
+          fi
+
+          echo "Selected scheme: $SCHEME"
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
-          echo "workspace=$WORKSPACE, scheme=$SCHEME"
 
       - name: Archive (unsigned)
         run: |
