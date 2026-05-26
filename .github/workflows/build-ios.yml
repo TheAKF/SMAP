@@ -173,6 +173,36 @@ jobs:
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
 
+      - name: Pre-resolve Swift packages (required by ExpoModulesJSI xcframework build)
+        run: |
+          echo "=== Swift Package.swift files in expo-modules-core ==="
+          find node_modules/expo-modules-core -name "Package.swift" -maxdepth 10 2>/dev/null \
+            | head -10 || echo "None found"
+
+          echo ""
+          echo "=== Resolving expo-modules-core Swift packages ==="
+          while IFS= read -r pkg; do
+            dir="$(dirname "$pkg")"
+            echo "→ resolving: $dir"
+            swift package resolve --package-path "$dir" 2>&1 | tail -3 || true
+          done < <(find node_modules/expo-modules-core -name "Package.swift" -maxdepth 10 2>/dev/null)
+
+          echo ""
+          echo "=== Resolving expo-modules-core xcworkspaces ==="
+          while IFS= read -r ws; do
+            echo "→ resolving: $ws"
+            xcodebuild -resolvePackageDependencies -workspace "$ws" 2>&1 | tail -3 || true
+          done < <(find node_modules/expo-modules-core -name "*.xcworkspace" -maxdepth 10 2>/dev/null)
+
+          echo ""
+          echo "=== Resolving main workspace packages ==="
+          xcodebuild -resolvePackageDependencies \
+            -workspace "${{ steps.xcode.outputs.workspace }}" \
+            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            2>&1 | tail -10 || true
+
+          echo "Done."
+
       - name: Archive (unsigned)
         run: |
           set -o pipefail
