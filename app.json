@@ -43,14 +43,6 @@
           "photosPermission": "כדי לבחור תמונת פרופיל"
         }
       ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#07111f",
-          "sounds": []
-        }
-      ]
     ],
     "web": {
       "favicon": "./assets/favicon.png",
