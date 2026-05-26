@@ -37,16 +37,7 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "extraPods": [
-              { "name": "GoogleUtilities", "modular_headers": true }
-            ]
-          }
-        }
-      ],
+      "./plugins/withModularHeaders",
       [
         "expo-image-picker",
         {
