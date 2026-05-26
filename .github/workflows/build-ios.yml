@@ -35,39 +35,60 @@ jobs:
           cp /tmp/GoogleService-Info.plist "$PROJ_DIR/GoogleService-Info.plist"
           echo "Copied to: $PROJ_DIR"
 
-      - name: Patch Podfile — add use_modular_headers!
+      - name: Show Podfile BEFORE patch
         run: |
-          python3 - <<'PYEOF'
+          echo "=== ios/Podfile first 40 lines (BEFORE patch) ==="
+          head -40 ios/Podfile
+
+      - name: Patch Podfile — fix Firebase modular headers
+        run: |
+          python3 << 'PYEOF'
           import re
 
           with open('ios/Podfile', 'r') as f:
               content = f.read()
 
-          if 'use_modular_headers!' in content:
-              print('✅ Already has use_modular_headers!')
+          # ── Fix 1: use_modular_headers! globally ──────────────────────────────
+          if 'use_modular_headers!' not in content:
+              m = re.search(r'platform :ios[^\n]*\n', content)
+              pos = m.end() if m else 0
+              content = content[:pos] + 'use_modular_headers!\n' + content[pos:]
+              print('+ Fix 1: added use_modular_headers! globally')
           else:
-              # Insert right after the `platform :ios ...` line
+              print('= Fix 1: use_modular_headers! already present')
+
+          # ── Fix 2: explicit pod overrides after use_expo_modules! ─────────────
+          POD_PATCH = (
+              "  pod 'GoogleUtilities', :modular_headers => true\n"
+              "  pod 'FirebaseCoreInternal', :modular_headers => true\n"
+          )
+          if "pod 'GoogleUtilities'" not in content:
+              # Insert after use_expo_modules! (with optional arguments)
               patched = re.sub(
-                  r'(platform :ios[^\n]*\n)',
-                  r'\1use_modular_headers!\n',
+                  r'([ \t]*use_expo_modules!(?:\([^)]*\))?\n)',
+                  r'\1' + POD_PATCH,
                   content
               )
-              if patched == content:
-                  # Fallback: prepend to file
-                  patched = 'use_modular_headers!\n' + content
-                  print('⚠️  platform :ios line not found — prepended use_modular_headers! at top')
+              if patched != content:
+                  content = patched
+                  print('+ Fix 2: added GoogleUtilities/FirebaseCoreInternal overrides after use_expo_modules!')
               else:
-                  print('✅ Inserted use_modular_headers! after platform :ios line')
+                  print('! Fix 2: use_expo_modules! not found — inserting in first target block')
+                  content = re.sub(
+                      r"(target '[^']+' do\n)",
+                      r'\1' + POD_PATCH,
+                      content,
+                      count=1
+                  )
+          else:
+              print('= Fix 2: GoogleUtilities pod override already present')
 
-              with open('ios/Podfile', 'w') as f:
-                  f.write(patched)
+          with open('ios/Podfile', 'w') as f:
+              f.write(content)
 
-          # Print first 40 lines of Podfile so we can verify in the log
-          with open('ios/Podfile', 'r') as f:
-              lines = f.readlines()
-          print('\n--- Podfile first 40 lines ---')
-          for i, line in enumerate(lines[:40], 1):
-              print(f'{i:3}: {line}', end='')
+          print('\n=== Podfile AFTER patch (first 50 lines) ===')
+          for i, line in enumerate(content.splitlines()[:50], 1):
+              print(f'{i:3}: {line}')
           PYEOF
 
       - name: Cache CocoaPods
@@ -106,9 +127,8 @@ jobs:
             SKIP_INSTALL=NO \
             | xcpretty || true
 
-          # Verify archive was created
           ls -la build/SchoolMap.xcarchive/Products/Applications/ 2>/dev/null \
-            || (echo "Archive failed, checking build log..." && exit 1)
+            || (echo "Archive failed" && exit 1)
 
       - name: Package IPA
         run: |
