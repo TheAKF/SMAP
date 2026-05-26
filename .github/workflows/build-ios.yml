@@ -29,6 +29,13 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
+      - name: Debug Podfile (verify plugin ran)
+        run: |
+          echo "=== First 40 lines of Podfile ==="
+          head -40 ios/Podfile
+          echo "=== GoogleUtilities in Podfile ==="
+          grep -n "GoogleUtilities\|modular_headers\|use_modular" ios/Podfile || echo "NOT FOUND"
+
       - name: Copy GoogleService-Info.plist into iOS project
         run: |
           PROJ_DIR=$(find ios -name "*.xcodeproj" -maxdepth 2 | head -1 | xargs dirname)
