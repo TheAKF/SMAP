@@ -16,12 +16,7 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
-              "com.googleusercontent.apps.REPLACE_WITH_YOUR_REVERSED_CLIENT_ID"
-            ]
-          },
-          {
-            "CFBundleURLSchemes": [
-              "com.googleusercontent.apps.REPLACE_WITH_YOUR_REVERSED_CLIENT_ID"
+              "com.yourname.schoolmap"
             ]
           }
         ],

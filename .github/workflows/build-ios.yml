@@ -15,6 +15,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm install
@@ -30,7 +31,16 @@ jobs:
 
       - name: Copy GoogleService-Info.plist into iOS project
         run: |
-          find ios -name "*.xcodeproj" -maxdepth 2 | head -1 | xargs -I{} dirname {} | xargs -I{} cp /tmp/GoogleService-Info.plist {}/GoogleService-Info.plist
+          PROJ_DIR=$(find ios -name "*.xcodeproj" -maxdepth 2 | head -1 | xargs dirname)
+          cp /tmp/GoogleService-Info.plist "$PROJ_DIR/GoogleService-Info.plist"
+          echo "Copied to: $PROJ_DIR"
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: pods-
 
       - name: Install CocoaPods
         run: |
@@ -42,44 +52,39 @@ jobs:
         run: |
           WORKSPACE=$(find ios -name "*.xcworkspace" -maxdepth 1 | head -1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
-            | awk '/Schemes:/,0' | grep -v "Schemes:" | head -1 | xargs)
+            | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" | head -1 | xargs)
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
-          echo "Found: workspace=$WORKSPACE scheme=$SCHEME"
+          echo "workspace=$WORKSPACE, scheme=$SCHEME"
 
-      - name: Build (unsigned)
+      - name: Archive (unsigned)
         run: |
-          xcodebuild \
+          xcodebuild archive \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build \
+            -archivePath build/SchoolMap.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build-for-testing 2>&1 | tail -50 || \
-          xcodebuild \
-            -workspace "${{ steps.xcode.outputs.workspace }}" \
-            -scheme "${{ steps.xcode.outputs.scheme }}" \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tail -100
+            SKIP_INSTALL=NO \
+            | xcpretty || true
+
+          # Verify archive was created
+          ls -la build/SchoolMap.xcarchive/Products/Applications/ 2>/dev/null \
+            || (echo "Archive failed, checking build log..." && exit 1)
 
       - name: Package IPA
         run: |
-          APP_PATH=$(find build -name "*.app" -path "*/Release-iphoneos/*" | head -1)
-          echo "App found at: $APP_PATH"
+          APP_PATH=$(find build/SchoolMap.xcarchive -name "*.app" | head -1)
+          echo "App: $APP_PATH"
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r SchoolMap-unsigned.ipa Payload/
           echo "IPA size: $(du -sh SchoolMap-unsigned.ipa)"
 
-      - name: Upload IPA artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: SchoolMap-iOS-unsigned
