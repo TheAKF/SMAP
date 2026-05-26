@@ -32,37 +32,6 @@ jobs:
         run: |
           find ios -name "*.xcodeproj" -maxdepth 2 | head -1 | xargs -I{} dirname {} | xargs -I{} cp /tmp/GoogleService-Info.plist {}/GoogleService-Info.plist
 
-      - name: Patch Podfile for Firebase modular headers
-        run: |
-          python3 - <<'PYEOF'
-fix = """
-# Fix: GoogleUtilities must define modules for FirebaseCoreInternal (Swift pod)
-post_install do |installer|
-  installer.pods_project.targets.each do |target|
-    if target.name == 'GoogleUtilities'
-      target.build_configurations.each do |config|
-        config.build_settings['DEFINES_MODULE'] = 'YES'
-      end
-    end
-  end
-end
-"""
-
-with open('ios/Podfile', 'r') as f:
-    content = f.read()
-
-if 'DEFINES_MODULE' not in content:
-    content = content + fix
-    with open('ios/Podfile', 'w') as f:
-        f.write(content)
-    print('Podfile patched: post_install hook added for GoogleUtilities')
-else:
-    print('Already patched')
-
-with open('ios/Podfile', 'r') as f:
-    print(f.read()[-500:])
-PYEOF
-
       - name: Install CocoaPods
         run: |
           cd ios
