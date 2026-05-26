@@ -34,16 +34,30 @@ jobs:
 
       - name: Patch Podfile for Firebase modular headers
         run: |
-          python3 -c "
-import re
+          python3 - <<'PYEOF'
+with open('ios/Podfile', 'r') as f:
+    lines = f.readlines()
+
+new_lines = []
+inserted = False
+for line in lines:
+    new_lines.append(line)
+    if not inserted and 'platform :ios' in line:
+        new_lines.append("use_modular_headers!\n")
+        inserted = True
+
+if inserted:
+    with open('ios/Podfile', 'w') as f:
+        f.writelines(new_lines)
+    print('Podfile patched: use_modular_headers! added')
+else:
+    print('WARNING: platform :ios not found in Podfile')
+
+# Verify
 with open('ios/Podfile', 'r') as f:
     content = f.read()
-if 'use_modular_headers' not in content:
-    content = re.sub(r'(platform :ios[^\n]*\n)', r'\1use_modular_headers!\n', content, count=1)
-    with open('ios/Podfile', 'w') as f:
-        f.write(content)
-print('Podfile patched')
-"
+print('use_modular_headers! present:', 'use_modular_headers!' in content)
+PYEOF
 
       - name: Install CocoaPods
         run: |
