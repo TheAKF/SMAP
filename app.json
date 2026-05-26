@@ -43,6 +43,7 @@
           "photosPermission": "כדי לבחור תמונת פרופיל"
         }
       ],
+      "./plugins/withModularHeaders"
     ],
     "web": {
       "favicon": "./assets/favicon.png",

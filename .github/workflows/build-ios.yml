@@ -35,51 +35,46 @@ jobs:
           cp /tmp/GoogleService-Info.plist "$PROJ_DIR/GoogleService-Info.plist"
           echo "Copied to: $PROJ_DIR"
 
-      - name: Patch Podfile — fix Firebase modular headers
+      - name: Patch Podfile — add use_modular_headers!
         run: |
           python3 - <<'PYEOF'
-          import re, sys
+          import re
 
           with open('ios/Podfile', 'r') as f:
               content = f.read()
 
-          print("--- Podfile snippet before patch ---")
-          for i, line in enumerate(content.splitlines()[:35], 1):
-              print(f"{i}: {line}")
-
-          patch = "  pod 'GoogleUtilities', :modular_headers => true\n" \
-                  "  pod 'FirebaseCoreInternal', :modular_headers => true\n"
-
-          if "pod 'GoogleUtilities', :modular_headers" in content:
-              print("\n✅ Already patched")
+          if 'use_modular_headers!' in content:
+              print('✅ Already has use_modular_headers!')
           else:
-              # Insert right after the first `target '...' do` line
+              # Insert right after the `platform :ios ...` line
               patched = re.sub(
-                  r"(target '[^']+' do\n)",
-                  r"\g<1>" + patch,
-                  content,
-                  count=1
+                  r'(platform :ios[^\n]*\n)',
+                  r'\1use_modular_headers!\n',
+                  content
               )
               if patched == content:
-                  print("\n❌ target block not found — prepending use_modular_headers!")
-                  patched = "use_modular_headers!\n" + content
+                  # Fallback: prepend to file
+                  patched = 'use_modular_headers!\n' + content
+                  print('⚠️  platform :ios line not found — prepended use_modular_headers! at top')
+              else:
+                  print('✅ Inserted use_modular_headers! after platform :ios line')
+
               with open('ios/Podfile', 'w') as f:
                   f.write(patched)
-              print("\n✅ Patched!")
 
-          # Verify
+          # Print first 40 lines of Podfile so we can verify in the log
           with open('ios/Podfile', 'r') as f:
-              result = f.read()
-          matches = [l for l in result.splitlines() if 'GoogleUtilities' in l or 'modular_headers' in l]
-          print("\n--- Verification ---")
-          print('\n'.join(matches) if matches else "❌ NOTHING FOUND")
+              lines = f.readlines()
+          print('\n--- Podfile first 40 lines ---')
+          for i, line in enumerate(lines[:40], 1):
+              print(f'{i:3}: {line}', end='')
           PYEOF
 
       - name: Cache CocoaPods
         uses: actions/cache@v4
         with:
           path: ios/Pods
-          key: pods-${{ hashFiles('ios/Podfile.lock') }}
+          key: pods-${{ hashFiles('ios/Podfile') }}
           restore-keys: pods-
 
       - name: Install CocoaPods
