@@ -35,28 +35,32 @@ jobs:
       - name: Patch Podfile for Firebase modular headers
         run: |
           python3 - <<'PYEOF'
-with open('ios/Podfile', 'r') as f:
-    lines = f.readlines()
+fix = """
+# Fix: GoogleUtilities must define modules for FirebaseCoreInternal (Swift pod)
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    if target.name == 'GoogleUtilities'
+      target.build_configurations.each do |config|
+        config.build_settings['DEFINES_MODULE'] = 'YES'
+      end
+    end
+  end
+end
+"""
 
-new_lines = []
-inserted = False
-for line in lines:
-    new_lines.append(line)
-    if not inserted and 'platform :ios' in line:
-        new_lines.append("use_modular_headers!\n")
-        inserted = True
-
-if inserted:
-    with open('ios/Podfile', 'w') as f:
-        f.writelines(new_lines)
-    print('Podfile patched: use_modular_headers! added')
-else:
-    print('WARNING: platform :ios not found in Podfile')
-
-# Verify
 with open('ios/Podfile', 'r') as f:
     content = f.read()
-print('use_modular_headers! present:', 'use_modular_headers!' in content)
+
+if 'DEFINES_MODULE' not in content:
+    content = content + fix
+    with open('ios/Podfile', 'w') as f:
+        f.write(content)
+    print('Podfile patched: post_install hook added for GoogleUtilities')
+else:
+    print('Already patched')
+
+with open('ios/Podfile', 'r') as f:
+    print(f.read()[-500:])
 PYEOF
 
       - name: Install CocoaPods
