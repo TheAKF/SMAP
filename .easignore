@@ -1,0 +1,7 @@
+.agents
+.claude
+node_modules
+functions/node_modules
+functions/lib
+.git
+*.log

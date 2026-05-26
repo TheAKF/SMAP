@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "School Map",
+    "slug": "school-map",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "school-map",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.yourname.schoolmap",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "כדי לבחור תמונת פרופיל",
+        "NSCameraUsageDescription": "כדי לצלם תמונת פרופיל",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.REPLACE_WITH_YOUR_REVERSED_CLIENT_ID"
+            ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.REPLACE_WITH_YOUR_REVERSED_CLIENT_ID"
+            ]
+          }
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.yourname.schoolmap",
+      "adaptiveIcon": {
+        "backgroundColor": "#07111f",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "כדי לבחור תמונת פרופיל"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#07111f",
+          "sounds": []
+        }
+      ]
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "35816f52-2674-43b5-993b-e88b137a3e99"
+      }
+    }
+  }
+}
