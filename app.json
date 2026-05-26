@@ -37,7 +37,6 @@
     },
     "plugins": [
       "expo-router",
-      "./plugins/withModularHeaders",
       [
         "expo-image-picker",
         {

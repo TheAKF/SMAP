@@ -6,11 +6,6 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { colors, radii, spacing } from '../constants/theme';
-// expo-firebase-recaptcha uses firebase/compat which doesn't exist on web — import only on native
-const FirebaseRecaptchaVerifierModal: any =
-  Platform.OS !== 'web'
-    ? require('expo-firebase-recaptcha').FirebaseRecaptchaVerifierModal
-    : null;
 import { sendOtp, confirmOtp, resetRecaptcha } from '../services/auth';
 import { createUser, getUser } from '../services/firestore';
 import { uploadAvatar } from '../services/storage';
@@ -20,8 +15,7 @@ import firebaseApp from '../services/firebase';
 export default function AuthScreen() {
   const router = useRouter();
   const { firebaseUser, loading: authLoading } = useAuth();
-  // Native reCAPTCHA verifier — FirebaseRecaptchaVerifierModal renders an invisible WebView
-  const recaptchaVerifierRef = useRef<FirebaseRecaptchaVerifierModal>(null);
+  const recaptchaVerifierRef = useRef<any>(null);
 
   // Redirect to map if already logged in
   useEffect(() => {
@@ -57,8 +51,8 @@ export default function AuthScreen() {
     setLoading(true);
     setError('');
     try {
-      // On native pass the modal verifier; on web it's handled internally
-      const verifier = Platform.OS !== 'web' ? recaptchaVerifierRef.current : undefined;
+      // On web use RecaptchaVerifier; on native Firebase uses APNs/silent push
+      const verifier = Platform.OS === 'web' ? undefined : null;
       await sendOtp(intl, verifier);
       setOtpSent(true);
     } catch (e: any) {
@@ -108,15 +102,6 @@ export default function AuthScreen() {
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Invisible recaptcha anchor (web only, hidden) */}
       <View nativeID="recaptcha-container" style={{ height: 0, overflow: 'hidden' }} />
-
-      {/* Native reCAPTCHA modal — invisible on native, no-op on web */}
-      {Platform.OS !== 'web' && (
-        <FirebaseRecaptchaVerifierModal
-          ref={recaptchaVerifierRef}
-          firebaseConfig={firebaseApp.options}
-          attemptInvisibleVerification
-        />
-      )}
 
       {/* Brand */}
       <View style={styles.brandRow}>
