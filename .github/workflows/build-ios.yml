@@ -173,11 +173,39 @@ jobs:
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
 
+      - name: Read ExpoModulesJSI build script (diagnostic)
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          with open('ios/Pods/Pods.xcodeproj/project.pbxproj', 'r') as f:
+              content = f.read()
+
+          print("=== All shellScript values mentioning xcframework or ExpoModulesJSI ===\n")
+          found = False
+          for m in re.finditer(r'shellScript = "((?:[^"\\]|\\.)*)";', content, re.DOTALL):
+              raw = m.group(1)
+              script = raw.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
+              if 'ExpoModulesJSI' in script or 'xcframework' in script.lower():
+                  found = True
+                  print("--- SCRIPT ---")
+                  print(script[:3000])
+                  print()
+
+          if not found:
+              print("Not found via shellScript regex, trying name-based search...")
+              idx = content.find('Build ExpoModulesJSI xcframework')
+              if idx >= 0:
+                  print(f"Found name at char {idx}, context:")
+                  print(content[max(0,idx-200):idx+1000])
+              else:
+                  print("Build ExpoModulesJSI xcframework not found in pbxproj at all!")
+          PYEOF
+
       - name: Pre-resolve Swift packages (required by ExpoModulesJSI xcframework build)
         run: |
           # Resolve any standalone Swift packages inside expo-modules-core
-          # (the ExpoModulesJSI build script calls xcodebuild on one of these)
-          echo "=== expo-modules-core Swift packages ==="
+          echo "=== expo-modules-core Package.swift files ==="
           find node_modules/expo-modules-core -name "Package.swift" -maxdepth 10 2>/dev/null \
             | head -10 || echo "None found"
 
@@ -193,13 +221,14 @@ jobs:
               -derivedDataPath build/DerivedData 2>&1 | tail -3 || true
           done < <(find node_modules/expo-modules-core -name "*.xcworkspace" -maxdepth 10 2>/dev/null)
 
-          # Resolve the MAIN workspace — use shared DerivedData so packages are
-          # cached and available when ExpoModulesJSI's internal xcodebuild runs.
+          # Resolve main workspace with exact same flags as the archive
           echo ""
-          echo "=== Resolving main workspace (shared DerivedData) ==="
+          echo "=== Resolving main workspace (Release/iphoneos, shared DerivedData) ==="
           xcodebuild -resolvePackageDependencies \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -configuration Release \
+            -sdk iphoneos \
             -derivedDataPath build/DerivedData \
             2>&1 | tee /tmp/resolve.log | tail -20
           echo "Done."
