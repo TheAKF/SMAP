@@ -175,32 +175,33 @@ jobs:
 
       - name: Pre-resolve Swift packages (required by ExpoModulesJSI xcframework build)
         run: |
-          echo "=== Swift Package.swift files in expo-modules-core ==="
+          # Resolve any standalone Swift packages inside expo-modules-core
+          # (the ExpoModulesJSI build script calls xcodebuild on one of these)
+          echo "=== expo-modules-core Swift packages ==="
           find node_modules/expo-modules-core -name "Package.swift" -maxdepth 10 2>/dev/null \
             | head -10 || echo "None found"
 
-          echo ""
-          echo "=== Resolving expo-modules-core Swift packages ==="
           while IFS= read -r pkg; do
             dir="$(dirname "$pkg")"
-            echo "→ resolving: $dir"
+            echo "→ swift package resolve: $dir"
             swift package resolve --package-path "$dir" 2>&1 | tail -3 || true
           done < <(find node_modules/expo-modules-core -name "Package.swift" -maxdepth 10 2>/dev/null)
 
-          echo ""
-          echo "=== Resolving expo-modules-core xcworkspaces ==="
           while IFS= read -r ws; do
-            echo "→ resolving: $ws"
-            xcodebuild -resolvePackageDependencies -workspace "$ws" 2>&1 | tail -3 || true
+            echo "→ xcodebuild resolve: $ws"
+            xcodebuild -resolvePackageDependencies -workspace "$ws" \
+              -derivedDataPath build/DerivedData 2>&1 | tail -3 || true
           done < <(find node_modules/expo-modules-core -name "*.xcworkspace" -maxdepth 10 2>/dev/null)
 
+          # Resolve the MAIN workspace — use shared DerivedData so packages are
+          # cached and available when ExpoModulesJSI's internal xcodebuild runs.
           echo ""
-          echo "=== Resolving main workspace packages ==="
+          echo "=== Resolving main workspace (shared DerivedData) ==="
           xcodebuild -resolvePackageDependencies \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
-            2>&1 | tail -10 || true
-
+            -derivedDataPath build/DerivedData \
+            2>&1 | tee /tmp/resolve.log | tail -20
           echo "Done."
 
       - name: Archive (unsigned)
@@ -212,6 +213,7 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -archivePath build/SchoolMap.xcarchive \
+            -derivedDataPath build/DerivedData \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -222,8 +224,8 @@ jobs:
               echo "=== Archive failed — errors from build log ==="
               grep -E "(error:|PhaseScriptExecution)" /tmp/xcodebuild.log | tail -40 || true
               echo ""
-              echo "=== Last 150 lines of raw xcodebuild log ==="
-              tail -150 /tmp/xcodebuild.log
+              echo "=== Last 100 lines of raw xcodebuild log ==="
+              tail -100 /tmp/xcodebuild.log
               exit 1
             }
 
