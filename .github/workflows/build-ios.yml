@@ -32,6 +32,19 @@ jobs:
         run: |
           find ios -name "*.xcodeproj" -maxdepth 2 | head -1 | xargs -I{} dirname {} | xargs -I{} cp /tmp/GoogleService-Info.plist {}/GoogleService-Info.plist
 
+      - name: Patch Podfile for Firebase modular headers
+        run: |
+          python3 -c "
+import re
+with open('ios/Podfile', 'r') as f:
+    content = f.read()
+if 'use_modular_headers' not in content:
+    content = re.sub(r'(platform :ios[^\n]*\n)', r'\1use_modular_headers!\n', content, count=1)
+    with open('ios/Podfile', 'w') as f:
+        f.write(content)
+print('Podfile patched')
+"
+
       - name: Install CocoaPods
         run: |
           cd ios
