@@ -43,28 +43,67 @@ async function initRecaptcha() {
 }
 
 export async function sendOtp(phoneNumber: string): Promise<void> {
+  console.log('[Auth] sendOtp called', { phoneNumber, platform: Platform.OS });
+
   if (Platform.OS !== 'web') {
-    // Native: bypass reCAPTCHA — Firebase still sends the real SMS.
-    (auth as any).settings.appVerificationDisabledForTesting = true;
-    const bypassVerifier = {
-      type: 'recaptcha',
-      verify: () => Promise.resolve(''),
-      _reset: () => {},
-    } as unknown as ApplicationVerifier;
-    confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, bypassVerifier);
+    console.log('[Auth] Native path: setting appVerificationDisabledForTesting=true');
+    try {
+      (auth as any).settings.appVerificationDisabledForTesting = true;
+      console.log('[Auth] appVerificationDisabledForTesting set, creating bypass verifier');
+      const bypassVerifier = {
+        type: 'recaptcha',
+        verify: () => {
+          console.log('[Auth] bypassVerifier.verify() called');
+          return Promise.resolve('');
+        },
+        _reset: () => { console.log('[Auth] bypassVerifier._reset() called'); },
+      } as unknown as ApplicationVerifier;
+      console.log('[Auth] calling signInWithPhoneNumber (native)...');
+      confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, bypassVerifier);
+      console.log('[Auth] signInWithPhoneNumber succeeded (native), verificationId:', (confirmationResult as any).verificationId);
+    } catch (e: any) {
+      console.error('[Auth] Native sendOtp error:', e.code, e.message, e);
+      throw e;
+    }
     return;
   }
 
-  // Web: use visible reCAPTCHA (user checks the box once, then SMS is sent)
-  await initRecaptcha();
+  // Web: use visible reCAPTCHA
+  console.log('[Auth] Web path: initializing reCAPTCHA');
+  try {
+    await initRecaptcha();
+  } catch (e: any) {
+    console.error('[Auth] initRecaptcha failed:', e.code, e.message, e);
+    throw e;
+  }
   if (!recaptchaVerifier) throw new Error('reCAPTCHA לא זמין');
-  confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+  console.log('[Auth] reCAPTCHA ready, calling signInWithPhoneNumber (web)...');
+  try {
+    confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+    console.log('[Auth] signInWithPhoneNumber succeeded (web)');
+  } catch (e: any) {
+    console.error('[Auth] Web sendOtp error:', e.code, e.message, e);
+    // Reset so user can try again
+    recaptchaVerifier?.clear();
+    recaptchaVerifier = null;
+    throw e;
+  }
 }
 
 export async function confirmOtp(otp: string): Promise<FirebaseUser> {
-  if (!confirmationResult) throw new Error('לא נשלח קוד אימות. שלח קודם SMS.');
-  const result = await confirmationResult.confirm(otp);
-  return result.user;
+  console.log('[Auth] confirmOtp called, otp length:', otp.length);
+  if (!confirmationResult) {
+    console.error('[Auth] confirmOtp: no confirmationResult!');
+    throw new Error('לא נשלח קוד אימות. שלח קודם SMS.');
+  }
+  try {
+    const result = await confirmationResult.confirm(otp);
+    console.log('[Auth] OTP confirmed, uid:', result.user.uid);
+    return result.user;
+  } catch (e: any) {
+    console.error('[Auth] confirmOtp error:', e.code, e.message, e);
+    throw e;
+  }
 }
 
 export function resetRecaptcha() {
