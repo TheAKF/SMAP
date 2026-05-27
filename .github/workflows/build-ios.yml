@@ -20,6 +20,16 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Patch expo-firebase-core — add missing EXLogging.h import
+        run: |
+          FILE="node_modules/expo-firebase-core/ios/EXFirebaseCore/EXFirebaseCore.m"
+          if [ -f "$FILE" ] && ! grep -q "EXLogging.h" "$FILE"; then
+            sed -i '' 's|#import <ExpoModulesCore/EXUtilities.h>|#import <ExpoModulesCore/EXUtilities.h>\n#import <ExpoModulesCore/EXLogging.h>|' "$FILE"
+            echo "Patched: added EXLogging.h to EXFirebaseCore.m"
+          else
+            echo "No patch needed (already present or file missing)"
+          fi
+
       - name: Select latest Xcode
         run: |
           echo "=== Available Xcode installs ==="
