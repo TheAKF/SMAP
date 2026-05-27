@@ -134,13 +134,14 @@ jobs:
               "  pod 'FirebaseCoreInternal', :modular_headers => true\n"
               "  pod 'FirebaseCore', :modular_headers => true\n"
               "  pod 'FirebaseAuth', :modular_headers => true\n"
+              "  pod 'FirebaseAuthInterop', :modular_headers => true\n"
           )
           if "pod 'FirebaseAuth', :modular_headers" not in content:
               idx = content.find('use_expo_modules!')
               if idx >= 0:
                   eol = content.find('\n', idx) + 1   # position right after the newline
                   content = content[:eol] + POD_PATCH + content[eol:]
-                  print('+ Fix 3: inserted GoogleUtilities/FirebaseCoreInternal pod overrides')
+                  print('+ Fix 3: inserted Firebase pod modular_headers overrides')
               else:
                   # Fallback: insert inside first target block
                   content = re.sub(
@@ -152,6 +153,36 @@ jobs:
           else:
               print('= Fix 3: pod overrides already present')
 
+          # ── Fix 4: post_install hook — DEFINES_MODULE=YES for all Firebase targets ──
+          # Belt-and-suspenders: even if a Firebase pod slips past the explicit list above,
+          # this ensures the Xcode target has DEFINES_MODULE=YES so Swift bridging headers
+          # (FirebaseAuth-Swift.h etc.) are generated at build time.
+          POST_INSTALL = (
+              "\n"
+              "post_install do |installer|\n"
+              "  installer.pods_project.targets.each do |target|\n"
+              "    if target.name.start_with?('Firebase') || target.name == 'RNFBAuth'\n"
+              "      target.build_configurations.each do |config|\n"
+              "        config.build_settings['DEFINES_MODULE'] = 'YES'\n"
+              "      end\n"
+              "    end\n"
+              "  end\n"
+              "  react_native_post_install(installer)\n"
+              "end\n"
+          )
+          if 'DEFINES_MODULE' not in content:
+              # Remove any existing bare post_install block first to avoid duplicates
+              content = re.sub(
+                  r'\npost_install do \|installer\|.*?^end\n',
+                  '',
+                  content,
+                  flags=re.DOTALL | re.MULTILINE
+              )
+              content = content.rstrip('\n') + POST_INSTALL
+              print('+ Fix 4: injected post_install DEFINES_MODULE hook')
+          else:
+              print('= Fix 4: DEFINES_MODULE already present')
+
           with open('ios/Podfile', 'w') as f:
               f.write(content)
 
@@ -159,8 +190,8 @@ jobs:
           print('=== Key lines after patch ===')
           for i, line in enumerate(content.splitlines(), 1):
               if any(k in line for k in ['modular_headers', 'EXFirebaseCore', 'GoogleUtilities',
-                                          'FirebaseCore', 'FirebaseAuth',
-                                          'use_expo_modules', 'platform :ios']):
+                                          'FirebaseCore', 'FirebaseAuth', 'DEFINES_MODULE',
+                                          'use_expo_modules', 'platform :ios', 'post_install']):
                   print(f'{i:3}: {line}')
           print()
           print('=== Podfile first 50 lines ===')
