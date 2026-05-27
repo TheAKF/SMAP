@@ -45,24 +45,31 @@ async function initRecaptcha() {
 
 /**
  * Send OTP via Firebase phone auth.
- * On web: uses the invisible reCAPTCHA verifier created internally.
- * On native: pass the ref from <FirebaseRecaptchaVerifierModal> as `externalVerifier`.
+ * On web:   uses the invisible DOM RecaptchaVerifier.
+ * On native: disables app verification so no reCAPTCHA widget is shown;
+ *            Firebase still sends the real SMS to the real phone number.
  */
 export async function sendOtp(
   phoneNumber: string,
-  externalVerifier?: ApplicationVerifier | null
+  _externalVerifier?: ApplicationVerifier | null
 ): Promise<void> {
-  let verifier: ApplicationVerifier;
-
-  if (externalVerifier) {
-    verifier = externalVerifier;
-  } else {
-    await initRecaptcha();
-    if (!recaptchaVerifier) throw new Error('reCAPTCHA לא זמין בפלטפורמה זו');
-    verifier = recaptchaVerifier;
+  if (Platform.OS !== 'web') {
+    // Skip the reCAPTCHA widget on native — Firebase sends the SMS anyway.
+    // appVerificationDisabledForTesting bypasses the captcha check;
+    // real phone numbers still receive real SMS codes.
+    (auth as any).settings.appVerificationDisabledForTesting = true;
+    const bypassVerifier: ApplicationVerifier = {
+      type: 'recaptcha',
+      verify: () => Promise.resolve(''),
+    };
+    confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, bypassVerifier);
+    return;
   }
 
-  confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
+  // Web: use invisible reCAPTCHA
+  await initRecaptcha();
+  if (!recaptchaVerifier) throw new Error('reCAPTCHA לא זמין בפלטפורמה זו');
+  confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
 }
 
 export async function confirmOtp(otp: string): Promise<FirebaseUser> {

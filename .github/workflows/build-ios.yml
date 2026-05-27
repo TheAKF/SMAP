@@ -20,34 +20,6 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Stub expo-firebase-core JS build (missing compiled output)
-        run: |
-          # expo-firebase-core 6.0.0 ships without a build/ directory.
-          # expo-firebase-recaptcha imports DEFAULT_WEB_APP_OPTIONS from it;
-          # that export is only a defaultProp we override, so a null stub is fine.
-          mkdir -p node_modules/expo-firebase-core/build
-          echo 'export const DEFAULT_WEB_APP_OPTIONS = null;' \
-            > node_modules/expo-firebase-core/build/FirebaseCore.js
-          echo "Stubbed expo-firebase-core/build/FirebaseCore.js"
-
-      - name: Patch expo-firebase-core — replace EXLogWarn with NSLog
-        run: |
-          FILE="node_modules/expo-firebase-core/ios/EXFirebaseCore/EXFirebaseCore.m"
-          if [ -f "$FILE" ]; then
-            # Remove any EXLogging.h import we may have added in a previous attempt
-            sed -i '' '/#import <ExpoModulesCore\/EXLogging.h>/d' "$FILE"
-            # EXLogging.h is not in the SDK 56 prebuilt xcframework — replace
-            # EXLogWarn with plain NSLog so no header import is needed.
-            if grep -q "EXLogWarn" "$FILE"; then
-              sed -i '' 's/EXLogWarn(@"Failed to initialize Firebase app: %@", name);/NSLog(@"[EXFirebaseCore] Failed to initialize Firebase app: %@", name);/' "$FILE"
-              echo "Patched: replaced EXLogWarn with NSLog in EXFirebaseCore.m"
-            else
-              echo "No EXLogWarn found — skipping"
-            fi
-          else
-            echo "expo-firebase-core not installed — skipping"
-          fi
-
       - name: Select latest Xcode
         run: |
           echo "=== Available Xcode installs ==="

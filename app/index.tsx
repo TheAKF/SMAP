@@ -5,19 +5,15 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { colors, radii, spacing } from '../constants/theme';
 import { sendOtp, confirmOtp, resetRecaptcha } from '../services/auth';
 import { createUser, getUser } from '../services/firestore';
 import { uploadAvatar } from '../services/storage';
 import { useAuth } from '../hooks/useAuth';
-import firebaseApp from '../services/firebase';
 
 export default function AuthScreen() {
   const router = useRouter();
   const { firebaseUser, loading: authLoading } = useAuth();
-  const recaptchaVerifierRef = useRef<any>(null);
-
   // Redirect to map if already logged in
   useEffect(() => {
     if (!authLoading && firebaseUser) {
@@ -52,9 +48,7 @@ export default function AuthScreen() {
     setLoading(true);
     setError('');
     try {
-      // On web RecaptchaVerifier is created inside sendOtp; on native use the WebView modal
-      const verifier = Platform.OS === 'web' ? undefined : recaptchaVerifierRef.current;
-      await sendOtp(intl, verifier);
+      await sendOtp(intl);
       setOtpSent(true);
     } catch (e: any) {
       resetRecaptcha();
@@ -100,16 +94,6 @@ export default function AuthScreen() {
   }
 
   return (
-    <>
-      {/* Native reCAPTCHA modal — invisible on native, no-op on web */}
-      {Platform.OS !== 'web' && (
-        <FirebaseRecaptchaVerifierModal
-          ref={recaptchaVerifierRef}
-          firebaseConfig={firebaseApp.options}
-          attemptInvisibleVerification={false}
-          sharedCookiesEnabled={true}
-        />
-      )}
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Invisible recaptcha anchor (web only, hidden) */}
       <View nativeID="recaptcha-container" style={{ height: 0, overflow: 'hidden' }} />
@@ -226,7 +210,6 @@ export default function AuthScreen() {
         </Text>
       </TouchableOpacity>
     </ScrollView>
-    </>
   );
 }
 
