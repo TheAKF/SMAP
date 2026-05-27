@@ -1,7 +1,20 @@
-const { withXcodeProject, withAppDelegate, IOSConfig } = require('@expo/config-plugins');
+const { withXcodeProject, withAppDelegate, withInfoPlist, IOSConfig } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
+// ── Helper: parse a GoogleService-Info.plist and return a plain JS object ──
+// Uses @expo/plist which ships with every Expo project.
+function parsePlist(filePath) {
+  try {
+    const { parse } = require('@expo/plist');
+    return parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    console.warn(`withFirebaseIos: failed to parse plist at ${filePath}: ${e.message}`);
+    return null;
+  }
+}
+
+// ── Step 1: copy GoogleService-Info.plist into the Xcode project ─────────────
 function withFirebasePlist(config) {
   return withXcodeProject(config, (config) => {
     const googleServicesFilePath = config.ios?.googleServicesFile;
@@ -39,6 +52,50 @@ function withFirebasePlist(config) {
   });
 }
 
+// ── Step 2: register REVERSED_CLIENT_ID as a URL scheme in Info.plist ────────
+// Firebase phone auth falls back to a reCAPTCHA WKWebView when APNs is not
+// available (e.g. a sideloaded app). After reCAPTCHA the web view redirects
+// back to the app using the REVERSED_CLIENT_ID scheme. Without this scheme
+// registered the callback silently fails / crashes the app.
+function withFirebaseUrlScheme(config) {
+  return withInfoPlist(config, (config) => {
+    const googleServicesFilePath = config.ios?.googleServicesFile;
+    if (!googleServicesFilePath) return config;
+
+    const projectRoot = config.modRequest.projectRoot;
+    const plistSrc = path.resolve(projectRoot, googleServicesFilePath);
+    if (!fs.existsSync(plistSrc)) return config;
+
+    const parsed = parsePlist(plistSrc);
+    const reversedClientId = parsed?.REVERSED_CLIENT_ID;
+    if (!reversedClientId) {
+      console.warn('withFirebaseIos: REVERSED_CLIENT_ID not found in plist — reCAPTCHA fallback may fail');
+      return config;
+    }
+
+    const urlTypes = config.modResults.CFBundleURLTypes ?? [];
+
+    const alreadyAdded = urlTypes.some((entry) =>
+      Array.isArray(entry.CFBundleURLSchemes) &&
+      entry.CFBundleURLSchemes.includes(reversedClientId)
+    );
+
+    if (!alreadyAdded) {
+      urlTypes.push({
+        CFBundleURLName: 'google',
+        CFBundleURLSchemes: [reversedClientId],
+      });
+      console.log(`withFirebaseIos: registered URL scheme ${reversedClientId}`);
+    } else {
+      console.log(`withFirebaseIos: URL scheme ${reversedClientId} already registered`);
+    }
+
+    config.modResults.CFBundleURLTypes = urlTypes;
+    return config;
+  });
+}
+
+// ── Step 3: add `import Firebase` + `FirebaseApp.configure()` to AppDelegate ─
 function withFirebaseAppDelegate(config) {
   return withAppDelegate(config, (config) => {
     let contents = config.modResults.contents;
@@ -80,6 +137,7 @@ function withFirebaseAppDelegate(config) {
 
 module.exports = function withFirebaseIos(config) {
   config = withFirebasePlist(config);
+  config = withFirebaseUrlScheme(config);   // ← NEW: registers REVERSED_CLIENT_ID URL scheme
   config = withFirebaseAppDelegate(config);
   return config;
 };
