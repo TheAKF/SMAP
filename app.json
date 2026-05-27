@@ -47,7 +47,7 @@
           "photosPermission": "כדי לבחור תמונת פרופיל"
         }
       ],
-      "@react-native-firebase/app",
+      "./plugins/withFirebaseIos",
       "./plugins/withModularHeaders"
     ],
     "web": {
