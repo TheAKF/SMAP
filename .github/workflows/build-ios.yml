@@ -43,7 +43,23 @@ jobs:
 
       - name: Write GoogleService-Info.plist
         run: |
-          echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}" | base64 --decode > /tmp/GoogleService-Info.plist
+          # Write to project root so @react-native-firebase/app plugin finds it during prebuild
+          echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}" | base64 --decode > GoogleService-Info.plist
+          cp GoogleService-Info.plist /tmp/GoogleService-Info.plist
+
+      - name: Create dummy google-services.json (iOS-only build, Android not needed)
+        run: |
+          cat > google-services.json << 'EOF'
+          {
+            "project_info": {
+              "project_number": "920361704345",
+              "project_id": "smap-f893f",
+              "storage_bucket": "smap-f893f.firebasestorage.app"
+            },
+            "client": [],
+            "configuration_version": "1"
+          }
+          EOF
 
       - name: Expo Prebuild
         run: npx expo prebuild --platform ios --clean
