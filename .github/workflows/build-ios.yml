@@ -153,13 +153,10 @@ jobs:
           else:
               print('= Fix 3: pod overrides already present')
 
-          # ── Fix 4: post_install hook — DEFINES_MODULE=YES for all Firebase targets ──
-          # Belt-and-suspenders: even if a Firebase pod slips past the explicit list above,
-          # this ensures the Xcode target has DEFINES_MODULE=YES so Swift bridging headers
-          # (FirebaseAuth-Swift.h etc.) are generated at build time.
-          POST_INSTALL = (
-              "\n"
-              "post_install do |installer|\n"
+          # ── Fix 4: inject DEFINES_MODULE=YES INTO the existing post_install block ──
+          # Expo prebuild generates one post_install block; CocoaPods forbids a second one.
+          # We splice our Firebase lines in just before the first closing `end` of the block.
+          FIREBASE_DEFINES = (
               "  installer.pods_project.targets.each do |target|\n"
               "    if target.name.start_with?('Firebase') || target.name == 'RNFBAuth'\n"
               "      target.build_configurations.each do |config|\n"
@@ -167,19 +164,27 @@ jobs:
               "      end\n"
               "    end\n"
               "  end\n"
-              "  react_native_post_install(installer)\n"
-              "end\n"
           )
           if 'DEFINES_MODULE' not in content:
-              # Remove any existing bare post_install block first to avoid duplicates
-              content = re.sub(
-                  r'\npost_install do \|installer\|.*?^end\n',
-                  '',
-                  content,
-                  flags=re.DOTALL | re.MULTILINE
-              )
-              content = content.rstrip('\n') + POST_INSTALL
-              print('+ Fix 4: injected post_install DEFINES_MODULE hook')
+              # Find the existing post_install block and insert before its first `end`
+              pi_idx = content.find('post_install do |installer|')
+              if pi_idx >= 0:
+                  # Find the `end` that closes this block
+                  end_idx = content.find('\nend', pi_idx)
+                  if end_idx >= 0:
+                      content = content[:end_idx + 1] + FIREBASE_DEFINES + content[end_idx + 1:]
+                      print('+ Fix 4: injected DEFINES_MODULE into existing post_install')
+                  else:
+                      print('! Fix 4: could not find closing end of post_install')
+              else:
+                  # No post_install at all — add one at the end of the file
+                  FULL_POST = (
+                      "\npost_install do |installer|\n"
+                      + FIREBASE_DEFINES
+                      + "end\n"
+                  )
+                  content = content.rstrip('\n') + FULL_POST
+                  print('+ Fix 4: added new post_install with DEFINES_MODULE')
           else:
               print('= Fix 4: DEFINES_MODULE already present')
 
