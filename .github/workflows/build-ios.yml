@@ -132,8 +132,10 @@ jobs:
           POD_PATCH = (
               "  pod 'GoogleUtilities', :modular_headers => true\n"
               "  pod 'FirebaseCoreInternal', :modular_headers => true\n"
+              "  pod 'FirebaseCore', :modular_headers => true\n"
+              "  pod 'FirebaseAuth', :modular_headers => true\n"
           )
-          if "pod 'GoogleUtilities'" not in content:
+          if "pod 'FirebaseAuth', :modular_headers" not in content:
               idx = content.find('use_expo_modules!')
               if idx >= 0:
                   eol = content.find('\n', idx) + 1   # position right after the newline
@@ -157,6 +159,7 @@ jobs:
           print('=== Key lines after patch ===')
           for i, line in enumerate(content.splitlines(), 1):
               if any(k in line for k in ['modular_headers', 'EXFirebaseCore', 'GoogleUtilities',
+                                          'FirebaseCore', 'FirebaseAuth',
                                           'use_expo_modules', 'platform :ios']):
                   print(f'{i:3}: {line}')
           print()
