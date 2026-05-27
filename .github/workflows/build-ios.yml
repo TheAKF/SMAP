@@ -20,6 +20,27 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Select latest Xcode
+        run: |
+          echo "=== Available Xcode installs ==="
+          ls /Applications/ | grep -E '^Xcode' || true
+          echo ""
+          echo "Current default:"
+          xcodebuild -version
+          swift --version 2>/dev/null || true
+
+          # expo-modules-jsi Package.swift requires swift-tools-version: 6.2.
+          # Select the newest Xcode on this runner so we have the latest SwiftPM.
+          LATEST=$(ls /Applications/ | grep -E '^Xcode_[0-9]' | sort -V | tail -1)
+          if [ -n "$LATEST" ]; then
+            echo "Selecting newest Xcode: $LATEST"
+            sudo xcode-select -s "/Applications/${LATEST}/Contents/Developer"
+          fi
+          echo ""
+          echo "=== Active Xcode after selection ==="
+          xcodebuild -version
+          swift --version 2>/dev/null || true
+
       - name: Write GoogleService-Info.plist
         run: |
           echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}" | base64 --decode > /tmp/GoogleService-Info.plist
@@ -140,6 +161,57 @@ jobs:
           cd ios
           pod install --repo-update
 
+      - name: Fix ExpoModulesJSI xcframework build
+        run: |
+          set -e
+          EXPO_JSI_PKG="$(pwd)/node_modules/expo-modules-jsi/apple"
+          BUILD_SCRIPT="${EXPO_JSI_PKG}/scripts/build-xcframework.sh"
+          PODS_ROOT="$(pwd)/ios/Pods"
+
+          # ── Why this step exists ──────────────────────────────────────────────
+          # build-xcframework.sh runs an inner `xcodebuild` with two key settings:
+          #   1. -derivedDataPath "${PACKAGE_DIR}/.DerivedData"  (its own separate cache,
+          #      NOT our build/DerivedData)
+          #   2. -disableAutomaticPackageResolution  (refuses to resolve if .DerivedData
+          #      doesn't already exist)
+          # On a fresh CI run that .DerivedData/ is empty → xcodebuild errors with
+          # "Could not resolve package dependencies". Package.swift has dependencies: []
+          # so resolution is instant/no-network; removing the flag is safe.
+
+          echo "=== Patch: remove -disableAutomaticPackageResolution ==="
+          # Allow the inner xcodebuild to do a trivial first-time resolution
+          # (ExpoModulesJSI/Package.swift has zero external dependencies).
+          sed -i '' 's/ -disableAutomaticPackageResolution//' "$BUILD_SCRIPT"
+          echo "Verify flag is gone:"
+          grep -n "disableAutomatic" "$BUILD_SCRIPT" \
+            && echo "WARNING: flag still present!" \
+            || echo "  OK — flag removed."
+
+          echo ""
+          echo "=== Generate ExpoModulesJSI module map ==="
+          # build-xcframework.sh calls generate-modulemap.sh itself, but running
+          # it now also validates that PODS_ROOT is correct before the archive.
+          PODS_ROOT="$PODS_ROOT" \
+            bash "${EXPO_JSI_PKG}/scripts/generate-modulemap.sh"
+          echo "Module map: ${EXPO_JSI_PKG}/.generated/module.modulemap"
+          cat "${EXPO_JSI_PKG}/.generated/module.modulemap" || true
+
+          echo ""
+          echo "=== Pre-resolve ExpoModulesJSI package into its own .DerivedData ==="
+          # This pre-populates .DerivedData/SourcePackages/ so the (now un-flagged)
+          # inner xcodebuild finds a valid resolved state immediately.
+          (cd "$EXPO_JSI_PKG" && \
+            PODS_ROOT="$PODS_ROOT" \
+            xcodebuild -resolvePackageDependencies \
+              -scheme ExpoModulesJSI \
+              -derivedDataPath .DerivedData \
+              2>&1 | tail -20
+          ) || echo "Note: pre-resolve returned non-zero (may be OK if no external deps)"
+
+          echo "SourcePackages created:"
+          ls -la "${EXPO_JSI_PKG}/.DerivedData/" 2>/dev/null \
+            || echo "  (directory not created — that's OK, patch alone may be enough)"
+
       - name: Find workspace and scheme
         id: xcode
         run: |
@@ -173,57 +245,9 @@ jobs:
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
 
-      - name: Read ExpoModulesJSI build script (diagnostic)
+      - name: Pre-resolve main workspace Swift packages
         run: |
-          python3 << 'PYEOF'
-          import re
-
-          with open('ios/Pods/Pods.xcodeproj/project.pbxproj', 'r') as f:
-              content = f.read()
-
-          print("=== All shellScript values mentioning xcframework or ExpoModulesJSI ===\n")
-          found = False
-          for m in re.finditer(r'shellScript = "((?:[^"\\]|\\.)*)";', content, re.DOTALL):
-              raw = m.group(1)
-              script = raw.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
-              if 'ExpoModulesJSI' in script or 'xcframework' in script.lower():
-                  found = True
-                  print("--- SCRIPT ---")
-                  print(script[:3000])
-                  print()
-
-          if not found:
-              print("Not found via shellScript regex, trying name-based search...")
-              idx = content.find('Build ExpoModulesJSI xcframework')
-              if idx >= 0:
-                  print(f"Found name at char {idx}, context:")
-                  print(content[max(0,idx-200):idx+1000])
-              else:
-                  print("Build ExpoModulesJSI xcframework not found in pbxproj at all!")
-          PYEOF
-
-      - name: Pre-resolve Swift packages (required by ExpoModulesJSI xcframework build)
-        run: |
-          # Resolve any standalone Swift packages inside expo-modules-core
-          echo "=== expo-modules-core Package.swift files ==="
-          find node_modules/expo-modules-core -name "Package.swift" -maxdepth 10 2>/dev/null \
-            | head -10 || echo "None found"
-
-          while IFS= read -r pkg; do
-            dir="$(dirname "$pkg")"
-            echo "→ swift package resolve: $dir"
-            swift package resolve --package-path "$dir" 2>&1 | tail -3 || true
-          done < <(find node_modules/expo-modules-core -name "Package.swift" -maxdepth 10 2>/dev/null)
-
-          while IFS= read -r ws; do
-            echo "→ xcodebuild resolve: $ws"
-            xcodebuild -resolvePackageDependencies -workspace "$ws" \
-              -derivedDataPath build/DerivedData 2>&1 | tail -3 || true
-          done < <(find node_modules/expo-modules-core -name "*.xcworkspace" -maxdepth 10 2>/dev/null)
-
-          # Resolve main workspace with exact same flags as the archive
-          echo ""
-          echo "=== Resolving main workspace (Release/iphoneos, shared DerivedData) ==="
+          echo "=== Resolving main workspace (Release/iphoneos) ==="
           xcodebuild -resolvePackageDependencies \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
