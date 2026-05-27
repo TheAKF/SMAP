@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.yourname.schoolmap",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "כדי לבחור תמונת פרופיל",
         "NSCameraUsageDescription": "כדי לצלם תמונת פרופיל",
