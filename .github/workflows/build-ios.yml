@@ -20,6 +20,16 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Stub expo-firebase-core JS build (missing compiled output)
+        run: |
+          # expo-firebase-core 6.0.0 ships without a build/ directory.
+          # expo-firebase-recaptcha imports DEFAULT_WEB_APP_OPTIONS from it;
+          # that export is only a defaultProp we override, so a null stub is fine.
+          mkdir -p node_modules/expo-firebase-core/build
+          echo 'export const DEFAULT_WEB_APP_OPTIONS = null;' \
+            > node_modules/expo-firebase-core/build/FirebaseCore.js
+          echo "Stubbed expo-firebase-core/build/FirebaseCore.js"
+
       - name: Patch expo-firebase-core — replace EXLogWarn with NSLog
         run: |
           FILE="node_modules/expo-firebase-core/ios/EXFirebaseCore/EXFirebaseCore.m"
