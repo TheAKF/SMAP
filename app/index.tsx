@@ -106,7 +106,8 @@ export default function AuthScreen() {
         <FirebaseRecaptchaVerifierModal
           ref={recaptchaVerifierRef}
           firebaseConfig={firebaseApp.options}
-          attemptInvisibleVerification={true}
+          attemptInvisibleVerification={false}
+          sharedCookiesEnabled={true}
         />
       )}
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
