@@ -13,10 +13,11 @@ let confirmationResult: ConfirmationResult | null = null;
 export async function sendOtp(phoneNumber: string): Promise<void> {
   // Bypass reCAPTCHA on all platforms — Firebase still sends the real SMS.
   (auth as any).settings.appVerificationDisabledForTesting = true;
-  const bypassVerifier: ApplicationVerifier = {
+  const bypassVerifier = {
     type: 'recaptcha',
     verify: () => Promise.resolve(''),
-  };
+    _reset: () => {},
+  } as unknown as ApplicationVerifier;
   confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, bypassVerifier);
 }
 
