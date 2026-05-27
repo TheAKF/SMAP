@@ -20,14 +20,22 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Patch expo-firebase-core — add missing EXLogging.h import
+      - name: Patch expo-firebase-core — replace EXLogWarn with NSLog
         run: |
           FILE="node_modules/expo-firebase-core/ios/EXFirebaseCore/EXFirebaseCore.m"
-          if [ -f "$FILE" ] && ! grep -q "EXLogging.h" "$FILE"; then
-            sed -i '' 's|#import <ExpoModulesCore/EXUtilities.h>|#import <ExpoModulesCore/EXUtilities.h>\n#import <ExpoModulesCore/EXLogging.h>|' "$FILE"
-            echo "Patched: added EXLogging.h to EXFirebaseCore.m"
+          if [ -f "$FILE" ]; then
+            # Remove any EXLogging.h import we may have added in a previous attempt
+            sed -i '' '/#import <ExpoModulesCore\/EXLogging.h>/d' "$FILE"
+            # EXLogging.h is not in the SDK 56 prebuilt xcframework — replace
+            # EXLogWarn with plain NSLog so no header import is needed.
+            if grep -q "EXLogWarn" "$FILE"; then
+              sed -i '' 's/EXLogWarn(@"Failed to initialize Firebase app: %@", name);/NSLog(@"[EXFirebaseCore] Failed to initialize Firebase app: %@", name);/' "$FILE"
+              echo "Patched: replaced EXLogWarn with NSLog in EXFirebaseCore.m"
+            else
+              echo "No EXLogWarn found — skipping"
+            fi
           else
-            echo "No patch needed (already present or file missing)"
+            echo "expo-firebase-core not installed — skipping"
           fi
 
       - name: Select latest Xcode
