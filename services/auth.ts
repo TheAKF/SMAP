@@ -6,18 +6,9 @@ import {
   onAuthStateChanged,
   User as FirebaseUser,
   ApplicationVerifier,
-  initializeRecaptchaConfig,
 } from 'firebase/auth';
 import { Platform } from 'react-native';
 import { auth } from './firebase';
-
-// Pre-warm the reCAPTCHA Enterprise config on web so the first sendOtp call
-// doesn't fail with "Failed to initialize reCAPTCHA Enterprise config".
-if (Platform.OS === 'web') {
-  initializeRecaptchaConfig(auth).catch(() => {
-    // Silently ignore — falls back to reCAPTCHA v2 automatically
-  });
-}
 
 let confirmationResult: ConfirmationResult | null = null;
 let recaptchaVerifier: RecaptchaVerifier | null = null;

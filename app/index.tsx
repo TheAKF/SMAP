@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { colors, radii, spacing } from '../constants/theme';
 import { sendOtp, confirmOtp, resetRecaptcha } from '../services/auth';
 import { createUser, getUser } from '../services/firestore';
@@ -51,8 +52,8 @@ export default function AuthScreen() {
     setLoading(true);
     setError('');
     try {
-      // On web use RecaptchaVerifier; on native Firebase uses APNs/silent push
-      const verifier = Platform.OS === 'web' ? undefined : null;
+      // On web RecaptchaVerifier is created inside sendOtp; on native use the WebView modal
+      const verifier = Platform.OS === 'web' ? undefined : recaptchaVerifierRef.current;
       await sendOtp(intl, verifier);
       setOtpSent(true);
     } catch (e: any) {
@@ -99,6 +100,15 @@ export default function AuthScreen() {
   }
 
   return (
+    <>
+      {/* Native reCAPTCHA modal — invisible on native, no-op on web */}
+      {Platform.OS !== 'web' && (
+        <FirebaseRecaptchaVerifierModal
+          ref={recaptchaVerifierRef}
+          firebaseConfig={firebaseApp.options}
+          attemptInvisibleVerification={true}
+        />
+      )}
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Invisible recaptcha anchor (web only, hidden) */}
       <View nativeID="recaptcha-container" style={{ height: 0, overflow: 'hidden' }} />
@@ -215,6 +225,7 @@ export default function AuthScreen() {
         </Text>
       </TouchableOpacity>
     </ScrollView>
+    </>
   );
 }
 
