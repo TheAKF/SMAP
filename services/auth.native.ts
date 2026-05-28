@@ -10,12 +10,6 @@ export async function sendOtp(phoneNumber: string): Promise<void> {
     const auth = rnAuth();
     dlog(`Step 1 OK - app name: "${auth.app.name}"`);
 
-    // Disable app verification so Firebase skips APNs/reCAPTCHA lookup.
-    // Required on sideloaded builds where APNs is unavailable and CLIENT_ID
-    // is missing from the plist. Works with Firebase test phone numbers.
-    // TODO: remove this line once CLIENT_ID is added to GoogleService-Info.plist
-    auth.settings.appVerificationDisabledForTesting = true;
-
     dlog('Step 2: calling signInWithPhoneNumber...');
     confirmationResult = await auth.signInWithPhoneNumber(phoneNumber);
     dlog('Step 2 OK - SMS sent!');
