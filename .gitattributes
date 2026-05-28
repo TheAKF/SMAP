@@ -1,0 +1,11 @@
+# Treat plist files as binary so git never touches line endings
+*.plist binary
+
+# Normal text files
+*.ts text=auto
+*.tsx text=auto
+*.js text=auto
+*.json text=auto
+*.yml text=auto
+*.yaml text=auto
+*.md text=auto

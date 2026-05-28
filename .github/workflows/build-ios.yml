@@ -47,6 +47,25 @@ jobs:
         run: |
           # Write to project root so @react-native-firebase/app plugin finds it during prebuild
           echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}" | base64 --decode > GoogleService-Info.plist
+
+          # Validate the plist is readable
+          echo "=== Plist file size ==="
+          wc -c < GoogleService-Info.plist
+
+          # Validate it is a valid plist
+          plutil -lint GoogleService-Info.plist || {
+            echo "ERROR: GoogleService-Info.plist from secret is not valid!"
+            echo "First 200 bytes (hex):"
+            xxd GoogleService-Info.plist | head -15
+            exit 1
+          }
+          echo "Plist is valid."
+
+          # Normalize to clean XML1 (removes CRLF, fixes encoding)
+          # Xcode 26.3 SWB is strict about plist format
+          plutil -convert xml1 GoogleService-Info.plist
+          echo "Plist normalized to xml1."
+
           cp GoogleService-Info.plist /tmp/GoogleService-Info.plist
 
       - name: Create dummy google-services.json (iOS-only build, Android not needed)
@@ -162,7 +181,10 @@ jobs:
         run: |
           PROJ_DIR=$(find ios -name "*.xcodeproj" -maxdepth 2 | head -1 | xargs dirname)
           cp /tmp/GoogleService-Info.plist "$PROJ_DIR/GoogleService-Info.plist"
-          echo "Copied to: $PROJ_DIR"
+          # Normalize again in case expo prebuild wrote a different version
+          plutil -convert xml1 "$PROJ_DIR/GoogleService-Info.plist"
+          plutil -lint "$PROJ_DIR/GoogleService-Info.plist" && echo "iOS plist OK" || exit 1
+          echo "Copied and validated at: $PROJ_DIR/GoogleService-Info.plist"
 
       - name: Patch Podfile - fix Firebase modular headers
         run: |
