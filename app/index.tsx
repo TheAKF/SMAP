@@ -57,6 +57,7 @@ export default function AuthScreen() {
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
   const [showDebug, setShowDebug] = useState(false);
   const logScrollRef = useRef<ScrollView>(null);
+  const mainScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     // Subscribe to log updates
@@ -69,6 +70,13 @@ export default function AuthScreen() {
     runFirebaseHealthCheck();
     return unsub;
   }, []);
+
+  // When the OTP box appears, scroll down so it's visible
+  useEffect(() => {
+    if (otpSent) {
+      setTimeout(() => mainScrollRef.current?.scrollToEnd({ animated: true }), 150);
+    }
+  }, [otpSent]);
 
   async function pickImage() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -136,7 +144,7 @@ export default function AuthScreen() {
   }
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView ref={mainScrollRef} style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Invisible recaptcha anchor (web only, hidden) */}
       <View nativeID="recaptcha-container" style={{ height: 0, overflow: 'hidden' }} />
 
@@ -219,6 +227,7 @@ export default function AuthScreen() {
             keyboardType="number-pad"
             maxLength={6}
             textAlign="center"
+            autoFocus
           />
         </View>
       )}
