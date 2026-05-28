@@ -10,14 +10,6 @@ export async function sendOtp(phoneNumber: string): Promise<void> {
     const auth = rnAuth();
     dlog(`Step 1 OK - app name: "${auth.app.name}"`);
 
-    // Skip APNs/reCAPTCHA for numbers registered as Firebase test phone numbers.
-    // On sideloaded builds APNs is unreliable so Firebase falls back to reCAPTCHA.
-    // Setting this flag makes Firebase skip verification entirely for test numbers.
-    // To use: add your phone number in Firebase Console → Auth → Sign-in method
-    //         → Phone → "Phone numbers for testing" with any code (e.g. 123456).
-    // Remove this flag for production App Store builds (APNs works there).
-    auth.settings.appVerificationDisabledForTesting = true;
-
     dlog('Step 2: calling signInWithPhoneNumber...');
     confirmationResult = await auth.signInWithPhoneNumber(phoneNumber);
     dlog('Step 2 OK - SMS sent!');
