@@ -142,33 +142,19 @@ jobs:
           else:
               print("= FirebaseApp.configure() already in correct position")
 
-          # 3. Add explicit APNs forwarding methods (required because
-          #    FirebaseAppDelegateProxyEnabled=NO disables swizzling,
-          #    and ExpoAppDelegate's new-arch method dispatch blocks swizzling anyway)
-          if 'setAPNSToken' not in out:
-              L = [
+          # 3. APNs forwarding: swizzling is now ENABLED (FirebaseAppDelegateProxyEnabled
+          #    removed from infoPlist). Firebase handles APNs automatically via swizzling.
+          #    Expo SDK 56 is compatible with Firebase swizzling — no manual forwarding needed.
+          if 'setAPNSToken' in out:
+              # Remove any previously patched manual APNs methods
+              out = re.sub(
+                  r'\n[ \t]*// Firebase phone auth.*?(?=\n[ \t]*\}[ \t]*\n\})',
                   '',
-                  '  // Firebase phone auth - explicit APNs forwarding (swizzling disabled)',
-                  '  func application(_ application: UIApplication,',
-                  '    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {',
-                  '    Auth.auth().setAPNSToken(deviceToken, type: .unknown)',
-                  '  }',
-                  '  func application(_ application: UIApplication,',
-                  '    didFailToRegisterForRemoteNotificationsWithError error: Error) {',
-                  '    // Firebase falls back to reCAPTCHA automatically',
-                  '  }',
-                  '  func application(_ application: UIApplication,',
-                  '    didReceiveRemoteNotification userInfo: [AnyHashable: Any],',
-                  '    fetchCompletionHandler ch: @escaping (UIBackgroundFetchResult) -> Void) {',
-                  '    if Auth.auth().canHandleNotification(userInfo) { ch(.noData); return }',
-                  '    ch(.noData)',
-                  '  }',
-                  '',
-              ]
-              apns_methods = '\n'.join(L)
-              last_brace = out.rfind('}')
-              out = out[:last_brace] + apns_methods + '\n' + out[last_brace:]
-              print("+ Added: APNs forwarding methods")
+                  out, flags=re.DOTALL
+              )
+              print("- Removed old manual APNs forwarding methods (swizzling now enabled)")
+          else:
+              print("= No manual APNs methods found (swizzling handles it)")
 
           with open(path, 'w') as f:
               f.write(out)
