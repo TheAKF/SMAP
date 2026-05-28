@@ -2,14 +2,20 @@ const { withXcodeProject, withAppDelegate, withInfoPlist, IOSConfig } = require(
 const fs = require('fs');
 const path = require('path');
 
-// ── Helper: parse a GoogleService-Info.plist and return a plain JS object ──
-// Uses @expo/plist which ships with every Expo project.
-function parsePlist(filePath) {
+// ── Helper: extract a single key from a GoogleService-Info.plist ─────────────
+// Uses a simple regex instead of a full XML parser — avoids @expo/plist API
+// differences across Expo SDK versions (parse vs default.parse etc.).
+function getPlistKey(filePath, key) {
   try {
-    const { parse } = require('@expo/plist');
-    return parse(fs.readFileSync(filePath, 'utf8'));
+    const text = fs.readFileSync(filePath, 'utf8');
+    // Plist format: <key>SOME_KEY</key>\n<string>SOME_VALUE</string>
+    const re = new RegExp(
+      '<key>' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '</key>\\s*<string>([^<]+)</string>'
+    );
+    const m = text.match(re);
+    return m ? m[1].trim() : null;
   } catch (e) {
-    console.warn(`withFirebaseIos: failed to parse plist at ${filePath}: ${e.message}`);
+    console.warn(`withFirebaseIos: failed to read plist at ${filePath}: ${e.message}`);
     return null;
   }
 }
@@ -66,12 +72,13 @@ function withFirebaseUrlScheme(config) {
     const plistSrc = path.resolve(projectRoot, googleServicesFilePath);
     if (!fs.existsSync(plistSrc)) return config;
 
-    const parsed = parsePlist(plistSrc);
-    const reversedClientId = parsed?.REVERSED_CLIENT_ID;
+    const reversedClientId = getPlistKey(plistSrc, 'REVERSED_CLIENT_ID');
     if (!reversedClientId) {
       console.warn('withFirebaseIos: REVERSED_CLIENT_ID not found in plist — reCAPTCHA fallback may fail');
+      console.warn('withFirebaseIos: To fix, enable Google Sign-In in Firebase console for this iOS app');
       return config;
     }
+    console.log(`withFirebaseIos: REVERSED_CLIENT_ID = ${reversedClientId}`);
 
     const urlTypes = config.modResults.CFBundleURLTypes ?? [];
 

@@ -1,36 +1,50 @@
 import rnAuth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { dlog } from '../utils/debugLog';
 
 let confirmationResult: FirebaseAuthTypes.ConfirmationResult | null = null;
 
 export async function sendOtp(phoneNumber: string): Promise<void> {
-  console.log('[Auth] sendOtp (native)', { phoneNumber });
+  dlog(`sendOtp START: ${phoneNumber}`);
   try {
-    confirmationResult = await rnAuth().signInWithPhoneNumber(phoneNumber);
-    console.log('[Auth] SMS sent successfully (native)');
+    dlog('Step 1: calling rnAuth()...');
+    const auth = rnAuth();
+    dlog(`Step 1 OK - app name: "${auth.app.name}"`);
+
+    dlog('Step 2: calling signInWithPhoneNumber...');
+    confirmationResult = await auth.signInWithPhoneNumber(phoneNumber);
+    dlog('Step 2 OK - SMS sent!');
   } catch (e: any) {
-    console.error('[Auth] sendOtp error:', e.code, e.message);
+    const code = e?.code ?? 'no-code';
+    const msg = e?.message ?? String(e);
+    dlog(`sendOtp FAILED - code: ${code}`, 'error');
+    dlog(`sendOtp FAILED - msg: ${msg}`, 'error');
     throw e;
   }
 }
 
 export async function confirmOtp(otp: string): Promise<FirebaseAuthTypes.User> {
-  console.log('[Auth] confirmOtp (native), otp length:', otp.length);
+  dlog(`confirmOtp START - length: ${otp.length}`);
   if (!confirmationResult) {
-    console.error('[Auth] no confirmationResult — sendOtp was not called');
+    dlog('confirmOtp ERROR: no confirmationResult', 'error');
     throw new Error('לא נשלח קוד אימות. שלח קודם SMS.');
   }
   try {
+    dlog('Calling confirmationResult.confirm()...');
     const result = await confirmationResult.confirm(otp);
     if (!result) throw new Error('אימות נכשל');
-    console.log('[Auth] OTP confirmed, uid:', result.user.uid);
+    dlog(`confirmOtp OK - uid: ${result.user.uid}`);
     return result.user;
   } catch (e: any) {
-    console.error('[Auth] confirmOtp error:', e.code, e.message);
+    const code = e?.code ?? 'no-code';
+    const msg = e?.message ?? String(e);
+    dlog(`confirmOtp FAILED - code: ${code}`, 'error');
+    dlog(`confirmOtp FAILED - msg: ${msg}`, 'error');
     throw e;
   }
 }
 
 export function resetRecaptcha() {
+  dlog('resetRecaptcha called');
   confirmationResult = null;
 }
 

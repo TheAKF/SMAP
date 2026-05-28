@@ -10,6 +10,29 @@ import { sendOtp, confirmOtp, resetRecaptcha } from '../services/auth';
 import { createUser, getUser } from '../services/firestore';
 import { uploadAvatar } from '../services/storage';
 import { useAuth } from '../hooks/useAuth';
+import { dlog, getEntries, subscribe, type LogEntry } from '../utils/debugLog';
+
+// ── Firebase health-check (native only) ─────────────────────────────────────
+// Runs on mount WITHOUT making any auth calls.
+// This tells us whether the RNFB module and Firebase app are accessible at all.
+function runFirebaseHealthCheck() {
+  if (Platform.OS === 'web') {
+    dlog('Platform: web — RNFB not used', 'info');
+    return;
+  }
+  try {
+    // Import inline so web bundle is not affected
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const rnAuth = require('@react-native-firebase/auth').default;
+    dlog('rnAuth module loaded OK');
+    const auth = rnAuth();
+    dlog(`Firebase app: "${auth.app.name}"`);
+    const u = auth.currentUser;
+    dlog(`currentUser: ${u ? u.uid : 'null (not signed in)'}`);
+  } catch (e: any) {
+    dlog(`Firebase health-check FAILED: ${e?.message ?? String(e)}`, 'error');
+  }
+}
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -30,6 +53,22 @@ export default function AuthScreen() {
   const [error, setError] = useState('');
   const [mode, setMode] = useState<'signup' | 'signin'>('signup');
 
+  // ── Debug log panel ─────────────────────────────────────────────────────
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+  const logScrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    // Subscribe to log updates
+    const unsub = subscribe(() => {
+      setLogEntries(getEntries());
+      // Auto-scroll to bottom
+      setTimeout(() => logScrollRef.current?.scrollToEnd({ animated: true }), 50);
+    });
+    // Run Firebase health-check immediately
+    runFirebaseHealthCheck();
+    return unsub;
+  }, []);
 
   async function pickImage() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -45,6 +84,7 @@ export default function AuthScreen() {
     const cleaned = phone.replace(/\D/g, '');
     if (cleaned.length < 9) { setError('מספר טלפון לא תקין'); return; }
     const intl = '+972' + cleaned.replace(/^0/, '');
+    dlog(`handleSendOtp: formatted number = ${intl}`);
     setLoading(true);
     setError('');
     try {
@@ -52,7 +92,9 @@ export default function AuthScreen() {
       setOtpSent(true);
     } catch (e: any) {
       resetRecaptcha();
-      setError(e.message || 'שגיאה לא ידועה');
+      const msg = e?.message || 'שגיאה לא ידועה';
+      dlog(`handleSendOtp catch: ${msg}`, 'error');
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -209,6 +251,44 @@ export default function AuthScreen() {
           <Text style={styles.toggleLink}>{mode === 'signup' ? 'כניסה' : 'הרשמה'}</Text>
         </Text>
       </TouchableOpacity>
+
+      {/* ── Debug Log Panel ─────────────────────────────────────────────── */}
+      <TouchableOpacity
+        style={styles.debugToggle}
+        onPress={() => setShowDebug(v => !v)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.debugToggleText}>
+          {showDebug ? '▲ Hide Debug Log' : `▼ Debug Log (${logEntries.length} entries)`}
+        </Text>
+      </TouchableOpacity>
+
+      {showDebug && (
+        <View style={styles.debugBox}>
+          <ScrollView
+            ref={logScrollRef}
+            style={styles.debugScroll}
+            onContentSizeChange={() => logScrollRef.current?.scrollToEnd({ animated: false })}
+          >
+            {logEntries.length === 0 ? (
+              <Text style={styles.debugEmpty}>No logs yet...</Text>
+            ) : (
+              logEntries.map(entry => (
+                <Text
+                  key={entry.id}
+                  style={[
+                    styles.debugLine,
+                    entry.level === 'error' && styles.debugError,
+                    entry.level === 'warn' && styles.debugWarn,
+                  ]}
+                >
+                  {entry.time} {entry.msg}
+                </Text>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -287,4 +367,28 @@ const styles = StyleSheet.create({
   toggleRow: { marginTop: 14, alignItems: 'center' },
   toggleText: { fontSize: 12, color: 'rgba(255,255,255,0.35)' },
   toggleLink: { color: colors.accent, fontWeight: '800' },
+
+  // Debug panel styles
+  debugToggle: {
+    marginTop: 20,
+    padding: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#1e3a5f',
+    borderRadius: 8,
+  },
+  debugToggleText: { fontSize: 11, color: '#4a7fa5', fontWeight: '600' },
+  debugBox: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#1e3a5f',
+    borderRadius: 8,
+    backgroundColor: '#050d1a',
+    height: 220,
+  },
+  debugScroll: { flex: 1, padding: 8 },
+  debugEmpty: { color: '#4a7fa5', fontSize: 11, textAlign: 'center', marginTop: 8 },
+  debugLine: { fontSize: 10, color: '#7fb8e0', fontFamily: 'monospace', lineHeight: 16 },
+  debugError: { color: '#ff6b6b' },
+  debugWarn: { color: '#ffd166' },
 });
