@@ -414,6 +414,7 @@ jobs:
             ENABLE_USER_SCRIPT_SANDBOXING=NO \
             SKIP_INSTALL=NO \
             CLANG_ENABLE_EXPLICIT_MODULES=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
             2>&1 | tee /tmp/xcodebuild.log | xcpretty || {
               echo ""
               echo "=== Archive failed - errors from build log ==="
