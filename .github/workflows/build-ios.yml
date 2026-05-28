@@ -115,34 +115,30 @@ jobs:
           #    FirebaseAppDelegateProxyEnabled=NO disables swizzling,
           #    and ExpoAppDelegate's new-arch method dispatch blocks swizzling anyway)
           if 'setAPNSToken' not in out:
-              apns_methods = '''
-  // Firebase phone auth - explicit APNs forwarding
-  // Needed because FirebaseAppDelegateProxyEnabled=NO and ExpoAppDelegate
-  // new-arch dispatch blocks Firebase's method swizzling.
-  override func application(_ application: UIApplication,
-                             didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-    Auth.auth().setAPNSToken(deviceToken, type: .unknown)
-    super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
-  }
-
-  override func application(_ application: UIApplication,
-                             didFailToRegisterForRemoteNotificationsWithError error: Error) {
-    // Firebase sees the failure and falls back to reCAPTCHA automatically
-    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
-  }
-
-  override func application(_ application: UIApplication,
-                             didReceiveRemoteNotification userInfo: [AnyHashable: Any],
-                             fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-    if Auth.auth().canHandleNotification(userInfo) {
-      completionHandler(.noData)
-      return
-    }
-    super.application(application, didReceiveRemoteNotification: userInfo,
-                      fetchCompletionHandler: completionHandler)
-  }
-'''
-              # Insert before the last closing brace of the class
+              L = [
+                  '',
+                  '  // Firebase phone auth - explicit APNs forwarding (swizzling disabled)',
+                  '  override func application(_ application: UIApplication,',
+                  '    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {',
+                  '    Auth.auth().setAPNSToken(deviceToken, type: .unknown)',
+                  '    super.application(application,',
+                  '      didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)',
+                  '  }',
+                  '  override func application(_ application: UIApplication,',
+                  '    didFailToRegisterForRemoteNotificationsWithError error: Error) {',
+                  '    super.application(application,',
+                  '      didFailToRegisterForRemoteNotificationsWithError: error)',
+                  '  }',
+                  '  override func application(_ application: UIApplication,',
+                  '    didReceiveRemoteNotification userInfo: [AnyHashable: Any],',
+                  '    fetchCompletionHandler ch: @escaping (UIBackgroundFetchResult) -> Void) {',
+                  '    if Auth.auth().canHandleNotification(userInfo) { ch(.noData); return }',
+                  '    super.application(application, didReceiveRemoteNotification: userInfo,',
+                  '      fetchCompletionHandler: ch)',
+                  '  }',
+                  '',
+              ]
+              apns_methods = '\n'.join(L)
               last_brace = out.rfind('}')
               out = out[:last_brace] + apns_methods + '\n' + out[last_brace:]
               print("+ Added: APNs forwarding methods")
