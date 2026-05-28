@@ -24,7 +24,8 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoadsInWebContent": true
-        }
+        },
+        "FirebaseAppDelegateProxyEnabled": false
       }
     },
     "android": {

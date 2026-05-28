@@ -68,7 +68,7 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
-      - name: Patch AppDelegate — guaranteed Firebase setup
+      - name: Patch AppDelegate — Firebase setup + explicit APNs forwarding
         run: |
           python3 << 'PYEOF'
           import os, re, sys
@@ -91,7 +91,6 @@ jobs:
 
           print("=== BEFORE ===")
           print(src)
-
           out = src
 
           # 1. Add 'import Firebase' after first import line if missing
@@ -99,9 +98,8 @@ jobs:
               out = re.sub(r'^(import \S+)', r'\1\nimport Firebase', out, count=1, flags=re.MULTILINE)
               print("+ Added: import Firebase")
 
-          # 2. Add FirebaseApp.configure() as first statement in didFinishLaunchingWithOptions
+          # 2. Add FirebaseApp.configure() inside didFinishLaunchingWithOptions if missing
           if 'FirebaseApp.configure()' not in out:
-              # Match the opening brace of didFinishLaunchingWithOptions and insert after it
               out = re.sub(
                   r'(didFinishLaunchingWithOptions[^\{]*\{)',
                   r'\1\n    FirebaseApp.configure()',
@@ -112,6 +110,42 @@ jobs:
               else:
                   print("ERROR: Could not insert FirebaseApp.configure()!")
                   sys.exit(1)
+
+          # 3. Add explicit APNs forwarding methods (required because
+          #    FirebaseAppDelegateProxyEnabled=NO disables swizzling,
+          #    and ExpoAppDelegate's new-arch method dispatch blocks swizzling anyway)
+          if 'setAPNSToken' not in out:
+              apns_methods = '''
+  // Firebase phone auth — explicit APNs forwarding
+  // Needed because FirebaseAppDelegateProxyEnabled=NO and ExpoAppDelegate
+  // new-arch dispatch blocks Firebase's method swizzling.
+  override func application(_ application: UIApplication,
+                             didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    Auth.auth().setAPNSToken(deviceToken, type: .unknown)
+    super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+
+  override func application(_ application: UIApplication,
+                             didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    // Firebase sees the failure and falls back to reCAPTCHA automatically
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+  }
+
+  override func application(_ application: UIApplication,
+                             didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                             fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+    if Auth.auth().canHandleNotification(userInfo) {
+      completionHandler(.noData)
+      return
+    }
+    super.application(application, didReceiveRemoteNotification: userInfo,
+                      fetchCompletionHandler: completionHandler)
+  }
+'''
+              # Insert before the last closing brace of the class
+              last_brace = out.rfind('}')
+              out = out[:last_brace] + apns_methods + '\n' + out[last_brace:]
+              print("+ Added: APNs forwarding methods")
 
           with open(path, 'w') as f:
               f.write(out)
