@@ -98,18 +98,30 @@ jobs:
               out = re.sub(r'^(import \S+)', r'\1\nimport Firebase', out, count=1, flags=re.MULTILINE)
               print("+ Added: import Firebase")
 
-          # 2. Add FirebaseApp.configure() inside didFinishLaunchingWithOptions if missing
+          # 2. Move FirebaseApp.configure() to BEFORE startReactNative call.
+          # RNFB native modules register during startReactNative and immediately
+          # access [FIRAuth auth] — if Firebase isn't configured yet, it crashes.
+          # Remove any existing configure() call first, then insert before startReactNative.
+          out = re.sub(r'\n[ \t]*FirebaseApp\.configure\(\)[ \t]*\n?', '\n', out)
+          # Insert right before the startReactNative / factory.startReactNative call
           if 'FirebaseApp.configure()' not in out:
               out = re.sub(
-                  r'(didFinishLaunchingWithOptions[^\{]*\{)',
-                  r'\1\n    FirebaseApp.configure()',
+                  r'([ \t]*(?:factory\.startReactNative|startReactNative)\b)',
+                  r'    FirebaseApp.configure()\n\1',
                   out, count=1
               )
               if 'FirebaseApp.configure()' in out:
-                  print("+ Added: FirebaseApp.configure()")
+                  print("+ Added: FirebaseApp.configure() BEFORE startReactNative")
               else:
-                  print("ERROR: Could not insert FirebaseApp.configure()!")
-                  sys.exit(1)
+                  # Fallback: insert at top of didFinishLaunchingWithOptions body
+                  out = re.sub(
+                      r'(didFinishLaunchingWithOptions[^\{]*\{)',
+                      r'\1\n    FirebaseApp.configure()',
+                      out, count=1
+                  )
+                  print("+ Added: FirebaseApp.configure() (fallback position)")
+          else:
+              print("= FirebaseApp.configure() already in correct position")
 
           # 3. Add explicit APNs forwarding methods (required because
           #    FirebaseAppDelegateProxyEnabled=NO disables swizzling,
