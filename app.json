@@ -9,7 +9,7 @@
     "scheme": "school-map",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.yourname.schoolmap",
+      "bundleIdentifier": "com.smap",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "כדי לבחור תמונת פרופיל",
@@ -17,7 +17,7 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
-              "com.yourname.schoolmap"
+              "com.smap"
             ]
           }
         ],
@@ -29,7 +29,7 @@
       }
     },
     "android": {
-      "package": "com.yourname.schoolmap",
+      "package": "com.smap",
       "adaptiveIcon": {
         "backgroundColor": "#07111f",
         "foregroundImage": "./assets/android-icon-foreground.png"
