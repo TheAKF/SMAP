@@ -66,6 +66,44 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
+      - name: Verify and fix AppDelegate — ensure FirebaseApp.configure() is present
+        run: |
+          APP_DELEGATE=$(find ios -name "AppDelegate.swift" | head -1)
+          echo "=== AppDelegate path: $APP_DELEGATE ==="
+          cat "$APP_DELEGATE"
+          echo ""
+          echo "=== Checking for FirebaseApp.configure() ==="
+
+          if grep -q "FirebaseApp.configure()" "$APP_DELEGATE"; then
+            echo "✓ FirebaseApp.configure() already present — plugin worked correctly"
+          else
+            echo "✗ FirebaseApp.configure() NOT found — applying shell patch as fallback"
+
+            # Ensure import Firebase is present
+            if ! grep -q "import Firebase" "$APP_DELEGATE"; then
+              # Insert after last 'import ...' line
+              LAST_IMPORT_LINE=$(grep -n "^import " "$APP_DELEGATE" | tail -1 | cut -d: -f1)
+              sed -i '' "${LAST_IMPORT_LINE}a\\
+import Firebase" "$APP_DELEGATE"
+              echo "Added: import Firebase after line $LAST_IMPORT_LINE"
+            fi
+
+            # Insert FirebaseApp.configure() before the first 'return super' line in the file
+            RETURN_LINE=$(grep -n "return super\." "$APP_DELEGATE" | head -1 | cut -d: -f1)
+            if [ -n "$RETURN_LINE" ]; then
+              INDENT=$(sed -n "${RETURN_LINE}p" "$APP_DELEGATE" | sed 's/[^ ].*//')
+              sed -i '' "${RETURN_LINE}i\\
+${INDENT}FirebaseApp.configure()" "$APP_DELEGATE"
+              echo "Added: FirebaseApp.configure() before line $RETURN_LINE"
+            else
+              echo "WARNING: Could not find 'return super.' — inserting at end of didFinishLaunchingWithOptions"
+            fi
+
+            echo ""
+            echo "=== AppDelegate after patch ==="
+            cat "$APP_DELEGATE"
+          fi
+
       - name: Copy GoogleService-Info.plist into iOS project
         run: |
           PROJ_DIR=$(find ios -name "*.xcodeproj" -maxdepth 2 | head -1 | xargs dirname)
