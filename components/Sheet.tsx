@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import {
   View, Text, Modal, StyleSheet, TouchableOpacity,
   Animated, Dimensions, ScrollView, Pressable,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { colors, radii, spacing } from '../constants/theme';
 
@@ -34,20 +35,27 @@ export default function Sheet({ visible, onClose, children, maxHeight = SCREEN_H
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={{ flex: 1 }}>
-        {/* Tappable backdrop — fills the whole modal, sheet sits on top */}
+      {/* flex-end so the KAV + sheet sit at the bottom; backdrop is absolute so it doesn't affect flex */}
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        {/* Tappable backdrop — position:absolute so it's out of flex flow */}
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
           <Animated.View style={[styles.overlay, { opacity }]} />
         </Pressable>
-        {/* Sheet panel */}
-        <Animated.View
-          style={[styles.sheet, { maxHeight, transform: [{ translateY }] }]}
+
+        {/* KeyboardAvoidingView lifts the sheet above the keyboard */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <TouchableOpacity style={styles.handle} onPress={onClose} activeOpacity={0.7} />
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {children}
-          </ScrollView>
-        </Animated.View>
+          {/* Sheet panel */}
+          <Animated.View
+            style={[styles.sheet, { maxHeight, transform: [{ translateY }] }]}
+          >
+            <TouchableOpacity style={styles.handle} onPress={onClose} activeOpacity={0.7} />
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {children}
+            </ScrollView>
+          </Animated.View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -59,10 +67,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.58)',
   },
   sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: colors.surfaceHigh,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
