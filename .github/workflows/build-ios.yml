@@ -2,6 +2,8 @@ name: Build iOS IPA (Unsigned)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
   build-ios:
@@ -66,43 +68,48 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
-      - name: Verify and fix AppDelegate — ensure FirebaseApp.configure() is present
+      - name: Verify and fix AppDelegate
         run: |
           APP_DELEGATE=$(find ios -name "AppDelegate.swift" | head -1)
-          echo "=== AppDelegate path: $APP_DELEGATE ==="
+          echo "=== AppDelegate: $APP_DELEGATE ==="
           cat "$APP_DELEGATE"
-          echo ""
-          echo "=== Checking for FirebaseApp.configure() ==="
+          python3 - "$APP_DELEGATE" << 'PYEOF'
+          import sys, re
 
-          if grep -q "FirebaseApp.configure()" "$APP_DELEGATE"; then
-            echo "✓ FirebaseApp.configure() already present — plugin worked correctly"
-          else
-            echo "✗ FirebaseApp.configure() NOT found — applying shell patch as fallback"
+          path = sys.argv[1]
+          with open(path) as f:
+              src = f.read()
 
-            # Ensure import Firebase is present
-            if ! grep -q "import Firebase" "$APP_DELEGATE"; then
-              # Insert after last 'import ...' line
-              LAST_IMPORT_LINE=$(grep -n "^import " "$APP_DELEGATE" | tail -1 | cut -d: -f1)
-              sed -i '' "${LAST_IMPORT_LINE}a\\
-import Firebase" "$APP_DELEGATE"
-              echo "Added: import Firebase after line $LAST_IMPORT_LINE"
-            fi
+          print("\n=== Checking FirebaseApp.configure() ===")
+          if 'FirebaseApp.configure()' in src:
+              print("OK - already present")
+              sys.exit(0)
 
-            # Insert FirebaseApp.configure() before the first 'return super' line in the file
-            RETURN_LINE=$(grep -n "return super\." "$APP_DELEGATE" | head -1 | cut -d: -f1)
-            if [ -n "$RETURN_LINE" ]; then
-              INDENT=$(sed -n "${RETURN_LINE}p" "$APP_DELEGATE" | sed 's/[^ ].*//')
-              sed -i '' "${RETURN_LINE}i\\
-${INDENT}FirebaseApp.configure()" "$APP_DELEGATE"
-              echo "Added: FirebaseApp.configure() before line $RETURN_LINE"
-            else
-              echo "WARNING: Could not find 'return super.' — inserting at end of didFinishLaunchingWithOptions"
-            fi
+          print("MISSING - patching now")
+          lines = src.splitlines(keepends=True)
 
-            echo ""
-            echo "=== AppDelegate after patch ==="
-            cat "$APP_DELEGATE"
-          fi
+          # Add 'import Firebase' after last 'import ...' line
+          if 'import Firebase' not in src:
+              last_import = max((i for i,l in enumerate(lines) if l.startswith('import ')), default=-1)
+              if last_import >= 0:
+                  lines.insert(last_import + 1, 'import Firebase\n')
+                  print("Added: import Firebase")
+
+          # Add 'FirebaseApp.configure()' before first 'return super.' line
+          return_idx = next((i for i,l in enumerate(lines) if 'return super.' in l), -1)
+          if return_idx >= 0:
+              indent = re.match(r'^(\s*)', lines[return_idx]).group(1)
+              lines.insert(return_idx, f'{indent}FirebaseApp.configure()\n')
+              print("Added: FirebaseApp.configure()")
+          else:
+              print("WARNING: could not find 'return super.' insertion point")
+
+          with open(path, 'w') as f:
+              f.writelines(lines)
+
+          print("\n=== AppDelegate after patch ===")
+          print(''.join(lines))
+          PYEOF
 
       - name: Copy GoogleService-Info.plist into iOS project
         run: |
