@@ -116,9 +116,9 @@ jobs:
           #    and ExpoAppDelegate's new-arch method dispatch blocks swizzling anyway)
           if 'setAPNSToken' not in out:
               apns_methods = '''
-  // Firebase phone auth — explicit APNs forwarding
+  // Firebase phone auth - explicit APNs forwarding
   // Needed because FirebaseAppDelegateProxyEnabled=NO and ExpoAppDelegate
-  // new-arch dispatch blocks Firebase's method swizzling.
+  // new-arch dispatch blocks Firebase method swizzling.
   override func application(_ application: UIApplication,
                              didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
     Auth.auth().setAPNSToken(deviceToken, type: .unknown)
