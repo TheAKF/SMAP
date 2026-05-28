@@ -230,52 +230,21 @@ jobs:
           cd ios
           pod install --repo-update
 
-      - name: Inject REVERSED_CLIENT_ID URL scheme into Info.plist
+      - name: Show GoogleService-Info.plist keys (debug)
         run: |
           python3 << 'PYEOF'
-          import plistlib, os, sys
-
-          # Read REVERSED_CLIENT_ID from GoogleService-Info.plist
+          import plistlib
           try:
               with open('GoogleService-Info.plist', 'rb') as f:
                   gsi = plistlib.load(f)
+              print("Keys in GoogleService-Info.plist:")
+              for k, v in gsi.items():
+                  print(f"  {k}: {v}")
           except Exception as e:
-              print(f"ERROR reading GoogleService-Info.plist: {e}")
-              sys.exit(1)
-
-          reversed_id = gsi.get('REVERSED_CLIENT_ID')
-          if not reversed_id:
-              print("ERROR: REVERSED_CLIENT_ID missing from plist!")
-              sys.exit(1)
-          print(f"REVERSED_CLIENT_ID = {reversed_id}")
-
-          # Find the app Info.plist (not Pods, not frameworks)
-          info_path = None
-          for root, dirs, files in os.walk('ios'):
-              dirs[:] = [d for d in dirs if d not in ('Pods', 'build')]
-              if 'Info.plist' in files:
-                  info_path = os.path.join(root, 'Info.plist')
-                  break
-
-          if not info_path:
-              print("ERROR: Info.plist not found!")
-              sys.exit(1)
-          print(f"Info.plist = {info_path}")
-
-          with open(info_path, 'rb') as f:
-              info = plistlib.load(f)
-
-          url_types = info.get('CFBundleURLTypes', [])
-          already = any(reversed_id in e.get('CFBundleURLSchemes', []) for e in url_types)
-
-          if not already:
-              url_types.append({'CFBundleURLName': 'google', 'CFBundleURLSchemes': [reversed_id]})
-              info['CFBundleURLTypes'] = url_types
-              with open(info_path, 'wb') as f:
-                  plistlib.dump(info, f)
-              print(f"SUCCESS: registered URL scheme {reversed_id}")
-          else:
-              print(f"Already registered: {reversed_id}")
+              print(f"Error: {e}")
+              # Try XML mode
+              with open('GoogleService-Info.plist') as f:
+                  print("Raw content (first 500 chars):", f.read(500))
           PYEOF
 
       - name: Create stub FirebaseAuth-Swift.h for ScanDependencies
