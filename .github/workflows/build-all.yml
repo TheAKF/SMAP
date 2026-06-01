@@ -230,12 +230,13 @@ jobs:
 
       - name: Build (unsigned)
         run: |
-          set -o pipefail
+          # Use 'generic/platform=iOS' so xcodebuild builds the full app bundle,
+          # not just the pod libraries. Raw output (no xcpretty) so errors are visible.
           xcodebuild build \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
             -configuration Release \
-            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
@@ -243,20 +244,31 @@ jobs:
             ENABLE_USER_SCRIPT_SANDBOXING=NO \
             CLANG_ENABLE_EXPLICIT_MODULES=NO \
             IPHONEOS_DEPLOYMENT_TARGET=16.4 \
-            2>&1 | tee /tmp/xcodebuild.log | xcpretty || {
-              grep -E "(error:|PhaseScriptExecution)" /tmp/xcodebuild.log | tail -40 || true
-              tail -100 /tmp/xcodebuild.log
-              exit 1
-            }
+            2>&1 | tee /tmp/xcodebuild.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ "$BUILD_EXIT" -ne 0 ]; then
+            echo "=== Build FAILED — last 80 lines ==="
+            tail -80 /tmp/xcodebuild.log
+            echo "=== error: lines ==="
+            grep "error:" /tmp/xcodebuild.log | tail -30 || true
+            exit 1
+          fi
 
       - name: Package IPA
         run: |
-          # xcodebuild build outputs the .app to DerivedData/Build/Products/
-          APP_PATH=$(find build/DerivedData/Build/Products -name "*.app" -type d | head -1)
+          echo "=== Searching for .app bundle ==="
+          # Search the whole build tree — DerivedData layout varies by Xcode version
+          APP_PATH=$(find build/ -name "SchoolMap.app" -type d 2>/dev/null | head -1)
+          # Fallback: any .app (excluding plugin bundles inside another .app)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find build/DerivedData -name "*.app" -type d 2>/dev/null \
+              | grep -v "\.app/" | head -1)
+          fi
           echo "App bundle: $APP_PATH"
           if [ -z "$APP_PATH" ]; then
-            echo "ERROR: .app not found. Contents of DerivedData/Build/Products:"
-            find build/DerivedData/Build/Products -maxdepth 3 | head -40 || echo "(empty)"
+            echo "ERROR: .app not found. All items in build/:"
+            find build/ -maxdepth 5 -name "*.app" 2>/dev/null || true
+            find build/DerivedData/Build/Products -maxdepth 2 2>/dev/null | head -60 || true
             exit 1
           fi
           mkdir -p Payload
