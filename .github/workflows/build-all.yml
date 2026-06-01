@@ -1,0 +1,326 @@
+name: Build IPA + APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  # ── iOS (IPA) ───────────────────────────────────────────────────────────────
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Select latest Xcode
+        run: |
+          echo "=== Available Xcode installs ==="
+          ls /Applications/ | grep -E '^Xcode' || true
+          echo ""
+          echo "Current default:"
+          xcodebuild -version
+          swift --version 2>/dev/null || true
+
+          # expo-modules-jsi Package.swift requires swift-tools-version: 6.2.
+          # Select the newest Xcode on this runner so we have the latest SwiftPM.
+          LATEST=$(ls /Applications/ | grep -E '^Xcode_[0-9]' | sort -V | tail -1)
+          if [ -n "$LATEST" ]; then
+            echo "Selecting newest Xcode: $LATEST"
+            sudo xcode-select -s "/Applications/${LATEST}/Contents/Developer"
+          fi
+          echo ""
+          echo "=== Active Xcode after selection ==="
+          xcodebuild -version
+          swift --version 2>/dev/null || true
+
+      - name: Write GoogleService-Info.plist
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}" | base64 --decode > GoogleService-Info.plist
+          echo "=== Plist file size ==="
+          wc -c < GoogleService-Info.plist
+          plutil -lint GoogleService-Info.plist || {
+            echo "ERROR: GoogleService-Info.plist from secret is not valid!"
+            xxd GoogleService-Info.plist | head -15
+            exit 1
+          }
+          echo "Plist is valid."
+          plutil -convert xml1 GoogleService-Info.plist
+          echo "Plist normalized to xml1."
+          cp GoogleService-Info.plist /tmp/GoogleService-Info.plist
+
+      - name: Create dummy google-services.json
+        run: |
+          cat > google-services.json << 'EOF'
+          {
+            "project_info": {
+              "project_number": "920361704345",
+              "project_id": "smap-f893f",
+              "storage_bucket": "smap-f893f.firebasestorage.app"
+            },
+            "client": [],
+            "configuration_version": "1"
+          }
+          EOF
+
+      - name: Expo Prebuild (iOS)
+        run: npx expo prebuild --platform ios --clean
+        env:
+          EXPO_NO_TELEMETRY: 1
+
+      - name: Patch AppDelegate
+        run: |
+          python3 << 'PYEOF'
+          import os, re, sys
+
+          path = None
+          for root, dirs, files in os.walk('ios'):
+              dirs[:] = [d for d in dirs if d != 'Pods']
+              if 'AppDelegate.swift' in files:
+                  path = os.path.join(root, 'AppDelegate.swift')
+                  break
+
+          if not path:
+              print("ERROR: AppDelegate.swift not found!")
+              sys.exit(1)
+
+          print(f"Found: {path}")
+          with open(path) as f:
+              src = f.read()
+
+          print("=== BEFORE ===")
+          print(src)
+          out = src
+
+          if 'import Firebase' not in out:
+              out = re.sub(r'^(import \S+)', r'\1\nimport Firebase', out, count=1, flags=re.MULTILINE)
+              print("+ Added: import Firebase")
+
+          out = re.sub(r'\n[ \t]*FirebaseApp\.configure\(\)[ \t]*\n?', '\n', out)
+          if 'FirebaseApp.configure()' not in out:
+              out = re.sub(
+                  r'([ \t]*(?:factory\.startReactNative|startReactNative)\b)',
+                  r'    FirebaseApp.configure()\n\1',
+                  out, count=1
+              )
+              if 'FirebaseApp.configure()' not in out:
+                  out = re.sub(
+                      r'(didFinishLaunchingWithOptions[^\{]*\{)',
+                      r'\1\n    FirebaseApp.configure()',
+                      out, count=1
+                  )
+                  print("+ Added: FirebaseApp.configure() (fallback position)")
+              else:
+                  print("+ Added: FirebaseApp.configure() BEFORE startReactNative")
+          else:
+              print("= FirebaseApp.configure() already present")
+
+          with open(path, 'w') as f:
+              f.write(out)
+
+          print("=== AFTER ===")
+          print(out)
+          PYEOF
+
+      - name: Copy GoogleService-Info.plist into iOS project
+        run: |
+          PROJ_DIR=$(find ios -name "*.xcodeproj" -maxdepth 2 | head -1 | xargs dirname)
+          cp /tmp/GoogleService-Info.plist "$PROJ_DIR/GoogleService-Info.plist"
+          plutil -convert xml1 "$PROJ_DIR/GoogleService-Info.plist"
+          plutil -lint "$PROJ_DIR/GoogleService-Info.plist" && echo "iOS plist OK" || exit 1
+
+      - name: Patch Podfile
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          with open('ios/Podfile', 'r') as f:
+              content = f.read()
+
+          print('= Fix 1: skipped (use_modular_headers! global intentionally omitted)')
+
+          if 'EXFirebaseCore' not in content:
+              idx = content.find('use_expo_modules!')
+              if idx >= 0:
+                  eol = content.find('\n', idx)
+                  original_line = content[idx:eol]
+                  suffix = original_line[len('use_expo_modules!'):]
+                  if not suffix.strip() or suffix.strip() == '()':
+                      new_line = 'use_expo_modules!(exclude: ["EXFirebaseCore"])'
+                      content = content[:idx] + new_line + content[eol:]
+                      print(f'+ Fix 2: excluded EXFirebaseCore')
+
+          POD_PATCH = (
+              "  pod 'GoogleUtilities', :modular_headers => true\n"
+              "  pod 'FirebaseCoreInternal', :modular_headers => true\n"
+              "  pod 'FirebaseCore', :modular_headers => true\n"
+              "  pod 'FirebaseAuth', :modular_headers => true\n"
+              "  pod 'FirebaseAuthInterop', :modular_headers => true\n"
+          )
+          if "pod 'FirebaseAuth', :modular_headers" not in content:
+              idx = content.find('use_expo_modules!')
+              if idx >= 0:
+                  eol = content.find('\n', idx) + 1
+                  content = content[:eol] + POD_PATCH + content[eol:]
+                  print('+ Fix 3: inserted Firebase pod modular_headers overrides')
+
+          with open('ios/Podfile', 'w') as f:
+              f.write(content)
+          PYEOF
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ hashFiles('ios/Podfile') }}
+          restore-keys: pods-
+
+      - name: Install CocoaPods
+        run: cd ios && pod install --repo-update
+
+      - name: Create stub FirebaseAuth-Swift.h
+        run: |
+          HEADERS_DIR="ios/Pods/Headers/Public/FirebaseAuth"
+          mkdir -p "$HEADERS_DIR"
+          [ ! -f "$HEADERS_DIR/FirebaseAuth-Swift.h" ] && \
+            echo "// Stub" > "$HEADERS_DIR/FirebaseAuth-Swift.h" || true
+
+      - name: Fix ExpoModulesJSI xcframework build
+        run: |
+          set -e
+          EXPO_JSI_PKG="$(pwd)/node_modules/expo-modules-jsi/apple"
+          BUILD_SCRIPT="${EXPO_JSI_PKG}/scripts/build-xcframework.sh"
+          PODS_ROOT="$(pwd)/ios/Pods"
+
+          sed -i '' 's/ -disableAutomaticPackageResolution//' "$BUILD_SCRIPT"
+
+          PODS_ROOT="$PODS_ROOT" bash "${EXPO_JSI_PKG}/scripts/generate-modulemap.sh"
+
+          (cd "$EXPO_JSI_PKG" && \
+            PODS_ROOT="$PODS_ROOT" \
+            xcodebuild -resolvePackageDependencies \
+              -scheme ExpoModulesJSI \
+              -derivedDataPath .DerivedData \
+              2>&1 | tail -20
+          ) || echo "Note: pre-resolve returned non-zero (may be OK)"
+
+      - name: Find workspace and scheme
+        id: xcode
+        run: |
+          WORKSPACE=$(find ios -name "*.xcworkspace" -maxdepth 1 | head -1)
+          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
+            | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" \
+            | grep -i "^SchoolMap$" | head -1)
+          [ -z "$SCHEME" ] && SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
+            | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" \
+            | grep -i "School" | head -1 | xargs)
+          [ -z "$SCHEME" ] && SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
+            | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" | head -1 | xargs)
+          echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
+          echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
+
+      - name: Pre-resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -workspace "${{ steps.xcode.outputs.workspace }}" \
+            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -configuration Release -sdk iphoneos \
+            -derivedDataPath build/DerivedData \
+            2>&1 | tail -20
+
+      - name: Archive (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -workspace "${{ steps.xcode.outputs.workspace }}" \
+            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -configuration Release -sdk iphoneos \
+            -archivePath build/SchoolMap.xcarchive \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            ENABLE_USER_SCRIPT_SANDBOXING=NO SKIP_INSTALL=NO \
+            CLANG_ENABLE_EXPLICIT_MODULES=NO IPHONEOS_DEPLOYMENT_TARGET=16.4 \
+            2>&1 | tee /tmp/xcodebuild.log | xcpretty || {
+              grep -E "(error:|PhaseScriptExecution)" /tmp/xcodebuild.log | tail -40 || true
+              tail -100 /tmp/xcodebuild.log
+              exit 1
+            }
+
+      - name: Package IPA
+        run: |
+          APP_PATH=$(find build/SchoolMap.xcarchive -name "*.app" | head -1)
+          mkdir -p Payload && cp -r "$APP_PATH" Payload/
+          zip -r SchoolMap-unsigned.ipa Payload/
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchoolMap-iOS-unsigned
+          path: SchoolMap-unsigned.ipa
+          retention-days: 7
+
+  # ── Android (APK) ───────────────────────────────────────────────────────────
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Write google-services.json
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode > google-services.json
+          echo "google-services.json size: $(wc -c < google-services.json) bytes"
+          python3 -c "import json; d=json.load(open('google-services.json')); print('project_id:', d['project_info']['project_id'])"
+
+      - name: Expo Prebuild (Android)
+        run: npx expo prebuild --platform android --clean
+        env:
+          EXPO_NO_TELEMETRY: 1
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x android/gradlew
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      - name: Build debug APK
+        run: cd android && ./gradlew assembleDebug --no-daemon
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchoolMap-Android
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
