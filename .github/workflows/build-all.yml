@@ -175,19 +175,25 @@ jobs:
 
           # Disable code signing for all pod targets so they don't inherit the
           # ad-hoc identity and trigger "not valid for Static Library" errors.
-          POST_INSTALL = (
-              "\npost_install do |installer|\n"
-              "  installer.pods_project.targets.each do |target|\n"
-              "    target.build_configurations.each do |config|\n"
-              "      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'\n"
-              "      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'\n"
+          # Expo prebuild already emits a post_install block — inject into it
+          # rather than adding a second one (CocoaPods forbids duplicates).
+          SIGNING_LINES = (
+              "  installer.pods_project.targets.each do |t|\n"
+              "    t.build_configurations.each do |c|\n"
+              "      c.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'\n"
+              "      c.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'\n"
               "    end\n"
               "  end\n"
-              "end\n"
           )
           if 'CODE_SIGNING_ALLOWED' not in content:
-              content = content.rstrip() + '\n' + POST_INSTALL
-              print('+ Fix 4: appended post_install to disable pod signing')
+              idx = content.find('post_install do')
+              if idx >= 0:
+                  eol = content.find('\n', idx) + 1
+                  content = content[:eol] + SIGNING_LINES + content[eol:]
+                  print('+ Fix 4: injected signing settings into existing post_install block')
+              else:
+                  content = content.rstrip() + '\npost_install do |installer|\n' + SIGNING_LINES + 'end\n'
+                  print('+ Fix 4: appended new post_install block')
 
           with open('ios/Podfile', 'w') as f:
               f.write(content)
