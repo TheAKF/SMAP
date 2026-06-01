@@ -36,8 +36,8 @@ interface Props {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MAP_W = 322;
-const MAP_H = 382;
+const MAP_W = 360;
+const MAP_H = 430;
 const DOT = 20;
 
 // ─── Room classification ──────────────────────────────────────────────────────
