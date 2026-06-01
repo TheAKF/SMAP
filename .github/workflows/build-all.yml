@@ -173,6 +173,22 @@ jobs:
                   content = content[:eol] + POD_PATCH + content[eol:]
                   print('+ Fix 3: inserted Firebase pod modular_headers overrides')
 
+          # Disable code signing for all pod targets so they don't inherit the
+          # ad-hoc identity and trigger "not valid for Static Library" errors.
+          POST_INSTALL = (
+              "\npost_install do |installer|\n"
+              "  installer.pods_project.targets.each do |target|\n"
+              "    target.build_configurations.each do |config|\n"
+              "      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'\n"
+              "      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'\n"
+              "    end\n"
+              "  end\n"
+              "end\n"
+          )
+          if 'CODE_SIGNING_ALLOWED' not in content:
+              content = content.rstrip() + '\n' + POST_INSTALL
+              print('+ Fix 4: appended post_install to disable pod signing')
+
           with open('ios/Podfile', 'w') as f:
               f.write(content)
           PYEOF
@@ -241,7 +257,8 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath build/SchoolMap.xcarchive \
             -derivedDataPath build/DerivedData \
-            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_IDENTITY="-" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=YES \
             ENABLE_USER_SCRIPT_SANDBOXING=NO \
