@@ -1,11 +1,13 @@
 import rnAuth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { Platform } from 'react-native';
 
 let confirmationResult: FirebaseAuthTypes.ConfirmationResult | null = null;
 
 export async function sendOtp(phoneNumber: string): Promise<void> {
   const auth = rnAuth();
-  // Bypass reCAPTCHA for Firebase test phone numbers
-  auth.settings.appVerificationDisabledForTesting = true;
+  // iOS (sideloaded IPA): use Firebase test phone numbers, bypass reCAPTCHA
+  // Android (APK): real SMS verification
+  auth.settings.appVerificationDisabledForTesting = Platform.OS === 'ios';
   confirmationResult = await auth.signInWithPhoneNumber(phoneNumber);
 }
 
