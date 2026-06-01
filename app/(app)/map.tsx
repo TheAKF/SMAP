@@ -766,6 +766,7 @@ export default function MapScreen() {
             floor={floor}
             currentRoom={currentRoom}
             userBubble={userBubble}
+            userAvatarUrl={appUser?.avatarUrl ?? null}
             friends={approvedFriends.map(f => ({
               id: f.uid, name: f.name, room: f.room,
               color: f.color, bubble: f.bubble,

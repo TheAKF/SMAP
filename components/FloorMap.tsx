@@ -26,6 +26,7 @@ interface Props {
   floor: 0 | 1 | 2;
   currentRoom: string;
   userBubble?: UserBubble | null;
+  userAvatarUrl?: string | null;
   friends: Friend[];
   teachers: Teacher[];
   stickerBursts?: StickerBurst[];
@@ -216,7 +217,7 @@ function stablePos(
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function FloorMap({
-  floor, currentRoom, userBubble, friends, teachers,
+  floor, currentRoom, userBubble, userAvatarUrl, friends, teachers,
   stickerBursts = [], onRoomPress, onFriendPress,
 }: Props) {
   const floorRooms  = FLOOR_ROOMS[floor] ?? [];
@@ -357,9 +358,16 @@ export default function FloorMap({
             <View style={styles.namePillUser}>
               <Text style={styles.namePillText}>אתה</Text>
             </View>
-            <View style={styles.userDot}>
-              <View style={styles.userDotCore} />
-            </View>
+            {userAvatarUrl ? (
+              <Image
+                source={{ uri: userAvatarUrl }}
+                style={styles.userDotAvatar}
+              />
+            ) : (
+              <View style={styles.userDot}>
+                <View style={styles.userDotCore} />
+              </View>
+            )}
           </View>
         );
       })() : null}
@@ -474,6 +482,18 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 4,
     backgroundColor: '#fff',
+  },
+  userDotAvatar: {
+    width: DOT + 4,
+    height: DOT + 4,
+    borderRadius: (DOT + 4) / 2,
+    borderWidth: 2.5,
+    borderColor: '#fff',
+    shadowColor: '#60a5fa',
+    shadowOpacity: 0.9,
+    shadowRadius: 9,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 7,
   },
 
   namePill: {
