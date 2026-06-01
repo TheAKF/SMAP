@@ -239,14 +239,16 @@ jobs:
         id: xcode
         run: |
           WORKSPACE=$(find ios -name "*.xcworkspace" -maxdepth 1 | head -1)
+          echo "All schemes in workspace:"
+          xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null | awk '/Schemes:/,0'
+          # Exclude Pods-* schemes — they build the pods aggregate, not the app
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
             | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" \
-            | grep -i "^SchoolMap$" | head -1)
+            | grep -v "Pods-" | grep -i "SchoolMap" | head -1 | xargs)
           [ -z "$SCHEME" ] && SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
             | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" \
-            | grep -i "School" | head -1 | xargs)
-          [ -z "$SCHEME" ] && SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
-            | awk '/Schemes:/,0' | grep -v "Schemes:" | grep -v "^$" | head -1 | xargs)
+            | grep -v "Pods-" | head -1 | xargs)
+          echo "Selected scheme: $SCHEME"
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
 
