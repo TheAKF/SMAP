@@ -742,7 +742,6 @@ export default function MapScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={styles.floorBadge}>{floorLabel}</Text>
 
         {/* The map */}
         <ScrollView
