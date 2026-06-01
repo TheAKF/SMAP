@@ -102,6 +102,16 @@ export default function AuthScreen() {
     }
   }
 
+  // While Firebase is restoring the session from the Keychain, show a spinner
+  // so the user never sees the login form flash before being redirected to the map.
+  if (authLoading) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator color={colors.primary} size="large" />
+      </View>
+    );
+  }
+
   return (
     <ScrollView ref={mainScrollRef} style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Invisible recaptcha anchor (web only) */}
@@ -226,6 +236,7 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingScreen: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   root: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingTop: 52, paddingBottom: 40 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },

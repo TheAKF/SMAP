@@ -19,10 +19,18 @@ export function useAuth() {
 
       if (fbUser) {
         // Listen to user doc in real-time — picks up changes immediately after signup
-        unsubUser = onSnapshot(doc(db, 'users', fbUser.uid), (snap) => {
-          setAppUser(snap.exists() ? (snap.data() as User) : null);
-          setLoading(false);
-        });
+        unsubUser = onSnapshot(
+          doc(db, 'users', fbUser.uid),
+          (snap) => {
+            setAppUser(snap.exists() ? (snap.data() as User) : null);
+            setLoading(false);
+          },
+          (_err) => {
+            // Firestore error (e.g. permission denied) — still stop loading so the
+            // map redirect can happen. appUser stays null but auth is still valid.
+            setLoading(false);
+          },
+        );
       } else {
         setAppUser(null);
         setLoading(false);
