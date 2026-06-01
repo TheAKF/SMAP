@@ -173,6 +173,8 @@ export default function MapScreen() {
   const [profileAvatarUri, setProfileAvatarUri] = useState<string | null>(null);
   const [teacherName, setTeacherName] = useState('');
   const [teacherRoomIdx, setTeacherRoomIdx] = useState(0);
+  const [teacherLoading, setTeacherLoading] = useState(false);
+  const [teacherError, setTeacherError] = useState('');
   const [addFriendPhone, setAddFriendPhone] = useState('');
   const [reportEmojis, setReportEmojis] = useState<string[]>([]);
 
@@ -310,10 +312,18 @@ export default function MapScreen() {
     const room = ALLOWED_TEACHER_ROOMS[teacherRoomIdx] ?? ALLOWED_TEACHER_ROOMS[0];
     const emojiStr = reportEmojis.join('');
     const label = emojiStr ? emojiStr + ' ' + teacherName : teacherName;
-    await addTeacher({ name: label || 'מורה', room, reportedBy: fbUser.uid, lastPoll: Date.now(), confirmed: true, emojis: reportEmojis });
-    setTeacherName('');
-    setReportEmojis([]);
-    setSheet(null);
+    setTeacherLoading(true);
+    setTeacherError('');
+    try {
+      await addTeacher({ name: label || 'מורה', room, reportedBy: fbUser.uid, lastPoll: Date.now(), confirmed: true, emojis: reportEmojis });
+      setTeacherName('');
+      setReportEmojis([]);
+      setSheet(null);
+    } catch (e: any) {
+      setTeacherError(e?.message || 'שגיאה בהוספת מורה');
+    } finally {
+      setTeacherLoading(false);
+    }
   }
 
   async function showBubble(room: string, text: string) {
@@ -531,7 +541,10 @@ export default function MapScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <SheetBtn label="הוסף מורה" onPress={handleAddTeacher} />
+          <SheetBtn label={teacherLoading ? 'שולח...' : 'הוסף מורה'} onPress={handleAddTeacher} />
+          {!!teacherError && (
+            <Text style={{ color: '#ff8a8a', fontSize: 13, textAlign: 'center', marginTop: 4 }}>{teacherError}</Text>
+          )}
           <View style={{ marginTop: 12, gap: 9 }}>
             {teachers.length === 0 && (
               <Text style={styles.emptyText}>אין מורים מדווחים כרגע</Text>
