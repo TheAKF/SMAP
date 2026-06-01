@@ -228,27 +228,21 @@ jobs:
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
 
-      - name: Pre-resolve Swift packages
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -workspace "${{ steps.xcode.outputs.workspace }}" \
-            -scheme "${{ steps.xcode.outputs.scheme }}" \
-            -configuration Release -sdk iphoneos \
-            -derivedDataPath build/DerivedData \
-            2>&1 | tail -20
-
-      - name: Archive (unsigned)
+      - name: Build (unsigned)
         run: |
           set -o pipefail
-          xcodebuild archive \
+          xcodebuild build \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
-            -configuration Release -sdk iphoneos \
-            -archivePath build/SchoolMap.xcarchive \
+            -configuration Release \
+            -sdk iphoneos \
             -derivedDataPath build/DerivedData \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
-            ENABLE_USER_SCRIPT_SANDBOXING=NO SKIP_INSTALL=NO \
-            CLANG_ENABLE_EXPLICIT_MODULES=NO IPHONEOS_DEPLOYMENT_TARGET=16.4 \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_USER_SCRIPT_SANDBOXING=NO \
+            CLANG_ENABLE_EXPLICIT_MODULES=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=16.4 \
             2>&1 | tee /tmp/xcodebuild.log | xcpretty || {
               grep -E "(error:|PhaseScriptExecution)" /tmp/xcodebuild.log | tail -40 || true
               tail -100 /tmp/xcodebuild.log
@@ -257,9 +251,18 @@ jobs:
 
       - name: Package IPA
         run: |
-          APP_PATH=$(find build/SchoolMap.xcarchive -name "*.app" | head -1)
-          mkdir -p Payload && cp -r "$APP_PATH" Payload/
+          # xcodebuild build outputs the .app to DerivedData/Build/Products/
+          APP_PATH=$(find build/DerivedData/Build/Products -name "*.app" -type d | head -1)
+          echo "App bundle: $APP_PATH"
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found. Contents of DerivedData/Build/Products:"
+            find build/DerivedData/Build/Products -maxdepth 3 | head -40 || echo "(empty)"
+            exit 1
+          fi
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
           zip -r SchoolMap-unsigned.ipa Payload/
+          echo "IPA size: $(du -sh SchoolMap-unsigned.ipa)"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
