@@ -228,47 +228,50 @@ jobs:
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
 
-      - name: Build (unsigned)
+      - name: Archive (ad-hoc signed)
         run: |
-          # Use 'generic/platform=iOS' so xcodebuild builds the full app bundle,
-          # not just the pod libraries. Raw output (no xcpretty) so errors are visible.
-          xcodebuild build \
+          # CODE_SIGNING_ALLOWED=NO blocks the install phase so SchoolMap.app
+          # never lands in Products/Applications/. Use ad-hoc identity ("-")
+          # with CODE_SIGNING_REQUIRED=NO instead — Xcode links + installs the
+          # app bundle into the xcarchive without a real certificate.
+          xcodebuild archive \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
             -configuration Release \
             -destination 'generic/platform=iOS' \
+            -archivePath build/SchoolMap.xcarchive \
             -derivedDataPath build/DerivedData \
-            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
             ENABLE_USER_SCRIPT_SANDBOXING=NO \
             CLANG_ENABLE_EXPLICIT_MODULES=NO \
             IPHONEOS_DEPLOYMENT_TARGET=16.4 \
+            SKIP_INSTALL=NO \
             2>&1 | tee /tmp/xcodebuild.log
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ "$BUILD_EXIT" -ne 0 ]; then
-            echo "=== Build FAILED — last 80 lines ==="
-            tail -80 /tmp/xcodebuild.log
+            echo "=== Archive FAILED — last 100 lines ==="
+            tail -100 /tmp/xcodebuild.log
             echo "=== error: lines ==="
             grep "error:" /tmp/xcodebuild.log | tail -30 || true
             exit 1
           fi
+          echo "=== xcarchive contents ==="
+          find build/SchoolMap.xcarchive -maxdepth 4 | head -30
 
       - name: Package IPA
         run: |
-          echo "=== Searching for .app bundle ==="
-          # Search the whole build tree — DerivedData layout varies by Xcode version
-          APP_PATH=$(find build/ -name "SchoolMap.app" -type d 2>/dev/null | head -1)
-          # Fallback: any .app (excluding plugin bundles inside another .app)
+          # Primary: xcarchive Products/Applications/ (populated by archive install phase)
+          APP_PATH=$(find build/SchoolMap.xcarchive/Products -name "*.app" -type d 2>/dev/null | head -1)
+          # Fallback: anywhere in DerivedData
           if [ -z "$APP_PATH" ]; then
-            APP_PATH=$(find build/DerivedData -name "*.app" -type d 2>/dev/null \
-              | grep -v "\.app/" | head -1)
+            APP_PATH=$(find build/DerivedData/Build/Products -name "SchoolMap.app" -type d 2>/dev/null | head -1)
           fi
           echo "App bundle: $APP_PATH"
           if [ -z "$APP_PATH" ]; then
-            echo "ERROR: .app not found. All items in build/:"
-            find build/ -maxdepth 5 -name "*.app" 2>/dev/null || true
-            find build/DerivedData/Build/Products -maxdepth 2 2>/dev/null | head -60 || true
+            echo "ERROR: .app not found"
+            find build/ -name "*.app" 2>/dev/null | head -20 || true
             exit 1
           fi
           mkdir -p Payload
