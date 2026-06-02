@@ -352,6 +352,11 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
+      - name: Ensure google-services.json in android/app
+        run: |
+          cp google-services.json android/app/google-services.json
+          echo "google-services.json in android/app: $(wc -c < android/app/google-services.json) bytes"
+
       - name: Make Gradle wrapper executable
         run: chmod +x android/gradlew
 
