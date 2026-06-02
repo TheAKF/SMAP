@@ -16,9 +16,10 @@ const firebaseConfig = {
 };
 
 let app: FirebaseApp;
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
+try {
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+} catch (e) {
+  // If initialization somehow ran twice (e.g. fast-refresh), grab the existing app
   app = getApps()[0];
 }
 

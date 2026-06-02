@@ -1,3 +1,7 @@
+// Must be first — ensures Firebase web SDK is initialized before any component
+// renders. In Hermes release builds the evaluation order is not guaranteed
+// through the import graph alone, so we pin it here explicitly.
+import '../services/firebase';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
