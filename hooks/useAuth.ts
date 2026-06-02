@@ -14,9 +14,9 @@ export function useAuth() {
     let unsubUser: (() => void) | null = null;
 
     // Safety-net: if Firebase or Firestore hangs on native and neither the
-    // auth callback nor the snapshot callback fires within 6 seconds, force
+    // auth callback nor the snapshot callback fires within 3 seconds, force
     // loading off so the user sees the login screen instead of a frozen spinner.
-    const timeout = setTimeout(() => setLoading(false), 6000);
+    const timeout = setTimeout(() => setLoading(false), 3000);
 
     const unsubAuth = onAuthChanged((fbUser) => {
       setFirebaseUser(fbUser);
