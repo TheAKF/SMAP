@@ -23,7 +23,9 @@ export function useAuth() {
       if (unsubUser) { unsubUser(); unsubUser = null; }
 
       if (fbUser) {
-        // Listen to user doc in real-time — picks up changes immediately after signup
+        // Listen to user doc in real-time — picks up changes immediately after signup.
+        // NOTE: do NOT clearTimeout here — if onSnapshot hangs (web SDK on native
+        // without auth token), the 3-second timeout must still fire as the fallback.
         unsubUser = onSnapshot(
           doc(db, 'users', fbUser.uid),
           (snap) => {
