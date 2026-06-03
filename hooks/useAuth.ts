@@ -13,39 +13,34 @@ export function useAuth() {
   useEffect(() => {
     let unsubUser: (() => void) | null = null;
 
-    // Safety-net: if Firebase or Firestore hangs on native and neither the
-    // auth callback nor the snapshot callback fires within 3 seconds, force
-    // loading off so the user sees the login screen instead of a frozen spinner.
-    const timeout = setTimeout(() => setLoading(false), 3000);
-
     const unsubAuth = onAuthChanged((fbUser) => {
       setFirebaseUser(fbUser);
       if (unsubUser) { unsubUser(); unsubUser = null; }
 
+      // Stop the loading spinner as soon as Firebase auth resolves.
+      // Don't wait for Firestore — the web SDK hangs on native (no auth token).
+      // appUser will update in the background if/when Firestore responds.
+      setLoading(false);
+
       if (fbUser) {
-        // Listen to user doc in real-time — picks up changes immediately after signup.
-        // NOTE: do NOT clearTimeout here — if onSnapshot hangs (web SDK on native
-        // without auth token), the 3-second timeout must still fire as the fallback.
         unsubUser = onSnapshot(
           doc(db, 'users', fbUser.uid),
           (snap) => {
-            clearTimeout(timeout);
             setAppUser(snap.exists() ? (snap.data() as User) : null);
-            setLoading(false);
           },
           (_err) => {
-            // Firestore error (e.g. permission denied) — still stop loading so the
-            // map redirect can happen. appUser stays null but auth is still valid.
-            clearTimeout(timeout);
-            setLoading(false);
+            // Firestore permission error on native — appUser stays null,
+            // auth is still valid so the map redirect still works.
           },
         );
       } else {
-        clearTimeout(timeout);
         setAppUser(null);
-        setLoading(false);
       }
     });
+
+    // Hard fallback: if onAuthChanged itself never fires (Firebase init failed),
+    // unblock the UI after 4 seconds so the user sees the login screen.
+    const timeout = setTimeout(() => setLoading(false), 4000);
 
     return () => { clearTimeout(timeout); unsubAuth(); unsubUser?.(); };
   }, []);
