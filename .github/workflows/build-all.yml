@@ -356,7 +356,7 @@ jobs:
         run: |
           cp google-services.json android/app/google-services.json
           python3 << 'PYEOF'
-          import json
+          import json, re
 
           path = 'android/app/google-services.json'
           with open(path) as f:
@@ -372,26 +372,36 @@ jobs:
           if not has_pkg:
               proj_num = data.get('project_info', {}).get('project_number', '920361704345')
               proj_id  = data.get('project_info', {}).get('project_id',  'smap-f893f')
-              # Build a minimal but valid client entry for com.smap.
-              # The mobilesdk_app_id format: 1:<project_number>:android:<hex>
+              # mobilesdk_app_id MUST be "1:<project_number>:android:<16-hex-chars>"
+              # Non-hex chars in the last segment cause processReleaseGoogleServices to fail.
+              app_hex  = 'aa11bb22cc33dd44'   # 16 valid hex chars — placeholder
               new_client = {
                   "client_info": {
-                      "mobilesdk_app_id": f"1:{proj_num}:android:comsmapandroid",
+                      "mobilesdk_app_id": f"1:{proj_num}:android:{app_hex}",
                       "android_client_info": {"package_name": pkg}
                   },
                   "oauth_client": [],
-                  "api_key": [{"current_key": ""}],
+                  "api_key": [{"current_key": "AIzaSyB7enX7UU4TuhmEF94iSOoZAP0rl249taE"}],
                   "services": {"appinvite_service": {"other_platform_oauth_client": []}}
               }
               data.setdefault('client', []).append(new_client)
               with open(path, 'w') as f:
                   json.dump(data, f, indent=2)
-              print(f'+ Injected {pkg} client into google-services.json')
+              print(f'+ Injected {pkg} client  mobilesdk_app_id=1:{proj_num}:android:{app_hex}')
           else:
               print(f'= {pkg} client already present')
           PYEOF
-          echo "Final google-services.json:"
-          python3 -c "import json; d=json.load(open('android/app/google-services.json')); [print(' -', c['client_info']['android_client_info']['package_name']) for c in d.get('client',[])]"
+          echo "=== android/app/google-services.json clients ==="
+          python3 -c "
+          import json
+          d = json.load(open('android/app/google-services.json'))
+          for c in d.get('client', []):
+              pkg  = c['client_info']['android_client_info']['package_name']
+              msid = c['client_info']['mobilesdk_app_id']
+              print(f'  pkg={pkg}  msid={msid}')
+          if not d.get('client'):
+              print('  (no clients!)')
+          "
 
       - name: Make Gradle wrapper executable
         run: chmod +x android/gradlew
