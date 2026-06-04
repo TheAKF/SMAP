@@ -5,9 +5,11 @@ let confirmationResult: FirebaseAuthTypes.ConfirmationResult | null = null;
 
 export async function sendOtp(phoneNumber: string): Promise<void> {
   const auth = rnAuth();
-  // iOS (sideloaded IPA): use Firebase test phone numbers, bypass reCAPTCHA
-  // Android (APK): real SMS verification
-  auth.settings.appVerificationDisabledForTesting = Platform.OS === 'ios';
+  // Sideloaded builds (IPA + APK) don't have their SHA fingerprint registered
+  // in Firebase Console, so auth/app-not-authorized is thrown on Android.
+  // Disabling app verification bypasses the SafetyNet/SHA check while still
+  // sending real SMS to real phone numbers.
+  auth.settings.appVerificationDisabledForTesting = true;
   confirmationResult = await auth.signInWithPhoneNumber(phoneNumber);
 }
 
