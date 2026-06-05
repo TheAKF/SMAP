@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "920361704345",
+    "project_id": "smap-f893f",
+    "storage_bucket": "smap-f893f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:920361704345:android:aabbccddeeff0011",
+        "android_client_info": {
+          "package_name": "com.smap"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB7enX7UU4TuhmEF94iSOoZAP0rl249taE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

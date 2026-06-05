@@ -341,66 +341,43 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Write google-services.json
+      - name: Verify google-services.json has com.smap
         run: |
-          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode > google-services.json
-          echo "google-services.json size: $(wc -c < google-services.json) bytes"
-          python3 -c "import json; d=json.load(open('google-services.json')); print('project_id:', d['project_info']['project_id'])"
+          echo "=== google-services.json (committed to repo) ==="
+          python3 -c "
+          import json
+          d = json.load(open('google-services.json'))
+          print('project_id:', d['project_info']['project_id'])
+          for c in d.get('client', []):
+              pkg  = c['client_info']['android_client_info']['package_name']
+              msid = c['client_info']['mobilesdk_app_id']
+              print(f'  client: pkg={pkg}  msid={msid}')
+          "
 
       - name: Expo Prebuild (Android)
         run: npx expo prebuild --platform android --clean
         env:
           EXPO_NO_TELEMETRY: 1
 
-      - name: Ensure google-services.json in android/app (patch com.smap if missing)
+      - name: Confirm google-services.json in android/app/
         run: |
-          cp google-services.json android/app/google-services.json
-          python3 << 'PYEOF'
-          import json, re
-
-          path = 'android/app/google-services.json'
-          with open(path) as f:
-              data = json.load(f)
-
-          pkg = 'com.smap'
-          clients = data.get('client', [])
-          has_pkg = any(
-              c.get('client_info', {}).get('android_client_info', {}).get('package_name') == pkg
-              for c in clients
-          )
-
-          if not has_pkg:
-              proj_num = data.get('project_info', {}).get('project_number', '920361704345')
-              proj_id  = data.get('project_info', {}).get('project_id',  'smap-f893f')
-              # mobilesdk_app_id MUST be "1:<project_number>:android:<16-hex-chars>"
-              # Non-hex chars in the last segment cause processReleaseGoogleServices to fail.
-              app_hex  = 'aa11bb22cc33dd44'   # 16 valid hex chars — placeholder
-              new_client = {
-                  "client_info": {
-                      "mobilesdk_app_id": f"1:{proj_num}:android:{app_hex}",
-                      "android_client_info": {"package_name": pkg}
-                  },
-                  "oauth_client": [],
-                  "api_key": [{"current_key": "AIzaSyB7enX7UU4TuhmEF94iSOoZAP0rl249taE"}],
-                  "services": {"appinvite_service": {"other_platform_oauth_client": []}}
-              }
-              data.setdefault('client', []).append(new_client)
-              with open(path, 'w') as f:
-                  json.dump(data, f, indent=2)
-              print(f'+ Injected {pkg} client  mobilesdk_app_id=1:{proj_num}:android:{app_hex}')
-          else:
-              print(f'= {pkg} client already present')
-          PYEOF
-          echo "=== android/app/google-services.json clients ==="
+          echo "=== android/app/google-services.json after prebuild ==="
           python3 -c "
           import json
           d = json.load(open('android/app/google-services.json'))
+          print('project_id:', d['project_info']['project_id'])
           for c in d.get('client', []):
               pkg  = c['client_info']['android_client_info']['package_name']
               msid = c['client_info']['mobilesdk_app_id']
-              print(f'  pkg={pkg}  msid={msid}')
+              print(f'  client: pkg={pkg}  msid={msid}')
           if not d.get('client'):
-              print('  (no clients!)')
+              print('  ERROR: no clients found!')
+              exit(1)
+          pkgs = [c['client_info']['android_client_info']['package_name'] for c in d['client']]
+          if 'com.smap' not in pkgs:
+              print('  ERROR: com.smap not found in clients!')
+              exit(1)
+          print('  OK: com.smap is present')
           "
 
       - name: Make Gradle wrapper executable
